@@ -75,6 +75,10 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
   const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go, toast }), [service, version, refresh, today, mode, go, toast]);
   useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast);
   useBackgroundReminders(service, version, ctx.today, toast);
+  useEffect(() => {
+    if (mode === 'test') return;
+    void service.ensureCourses().then((n) => { if (n > 0) refresh(); });
+  }, [service, version, mode, refresh]);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
   const clock = useClock();
   const [tour, setTour] = useState(false);

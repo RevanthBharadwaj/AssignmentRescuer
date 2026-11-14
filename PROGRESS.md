@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 17: a chat per course, full window chat, better answers (latest)**
+**Update 18: empty Courses page fix, due date order, course names (latest)**
+
+1. Any course code found on a saved assignment or event now gets its own course automatically, so the Courses page is not empty while Home shows work for those courses.
+2. Reminders for today are sorted by due date, then time, then title, not by unit number.
+3. Home shows the course name instead of the code; hovering shows the name, code and professor.
+4. 202 Vitest tests pass.
+
+**Update 17: a chat per course, full window chat, better answers**
 
 1. Chat is now one saved chat per course, plus one for all courses. A list on the left shows each chat with its last message; picking a course opens its history. The assignment you pick only adds context. Chats saved earlier under an assignment will not show in the new per course chats.
 2. The chat fills the window (wide page, list on the left, conversation and pinned message box on the right; the list folds into the Course menu on narrow windows).

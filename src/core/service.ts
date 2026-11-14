@@ -340,6 +340,24 @@ export class AcademicService {
   }
 
   /**
+   * Makes sure every course code that appears on a saved assignment or event has a course of its own,
+   * so the Courses page is never empty while the Home page shows work for those courses.
+   * Returns how many courses were created.
+   */
+  async ensureCourses(): Promise<number> {
+    const records = await this.repo.listRecords();
+    const have = new Set(records.filter((r) => r.entityType === 'course').map((r) => String(r.fields.code)));
+    const missing = new Set<string>();
+    for (const r of records) {
+      if (r.entityType === 'course') continue;
+      const c = r.fields.courseCode;
+      if (typeof c === 'string' && c && !have.has(c)) missing.add(c);
+    }
+    for (const code of missing) await this.addCourse({ code, name: null, instructor: null });
+    return missing.size;
+  }
+
+  /**
    * Add several courses at once (for example a pasted Canvas course list).
    * When no semester is set yet, the list's term becomes the semester name.
    */

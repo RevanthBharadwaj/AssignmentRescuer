@@ -30,7 +30,16 @@ export function Home() {
   const weekEnd = addDays(today, 7);
   const thisWeek = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! <= weekEnd);
   const later = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! > weekEnd);
-  const courseName = (code: unknown) => courses.find((c) => c.fields.code === code)?.fields.name;
+  const courseOf = (code: unknown) => courses.find((c) => c.fields.code === code);
+  const courseName = (code: unknown) => String(courseOf(code)?.fields.name ?? code ?? '');
+  // Shown on hover: the course name, its code and the professor.
+  const courseHover = (code: unknown) => {
+    const c = courseOf(code);
+    return [c?.fields.name, String(code ?? ''), c?.fields.instructor ? `Professor ${String(c.fields.instructor)}` : ''].filter(Boolean).join(' · ');
+  };
+  // Earliest due date first, then the time of day, then the title. Not by unit number.
+  const reminderList = [...reminders].sort((a, b) =>
+    a.dueDate.localeCompare(b.dueDate) || (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99') || a.title.localeCompare(b.title, undefined, { numeric: true }));
 
   const row = (r: (typeof deadlines)[number], i: number) => {
     const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
@@ -45,7 +54,7 @@ export function Home() {
         </span>
         <span className="row-end">
           <Urgency record={r} />
-          {r.fields.courseCode ? <button type="button" className="tag as-button" title={String(courseName(r.fields.courseCode) ?? '')} onClick={() => go({ name: 'course', code: String(r.fields.courseCode) })}><CourseDot code={r.fields.courseCode} /> {String(r.fields.courseCode)}</button> : null}
+          {r.fields.courseCode ? <button type="button" className="tag as-button" title={courseHover(r.fields.courseCode)} onClick={() => go({ name: 'course', code: String(r.fields.courseCode) })}><CourseDot code={r.fields.courseCode} /> {courseName(r.fields.courseCode)}</button> : null}
           {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
           {exam ? <span className="tag kind-conflict">exam</span> : null}
         </span>
@@ -100,11 +109,11 @@ export function Home() {
           <span className="chip">today</span>
           <h2 id="today-title">Reminders for today</h2>
           <ul className="deadlines">
-            {reminders.map((r) => (
+            {reminderList.map((r) => (
               <li key={`${r.recordId}-${r.offsetDays}`}>
                 <span className="date">{r.offsetDays === 0 ? 'due today' : `due in ${r.offsetDays} day${r.offsetDays === 1 ? '' : 's'}`}{r.dueTime ? ` · ${formatTime(r.dueTime)}` : ''}</span>
                 <span className="title">{r.title}</span>
-                {r.courseCode ? <span className="tag">{r.courseCode}</span> : <span />}
+                {r.courseCode ? <span className="tag" title={courseHover(r.courseCode)}>{courseName(r.courseCode)}</span> : <span />}
               </li>
             ))}
           </ul>
@@ -134,7 +143,7 @@ export function Home() {
               <li key={r.id} className="stagger" style={{ ['--i' as string]: i }}>
                 <span className="date">{typeof r.fields.dueNote === 'string' ? r.fields.dueNote : 'no date yet'}</span>
                 <span className="title"><button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button></span>
-                <span>{r.fields.courseCode ? <span className="tag">{String(r.fields.courseCode)}</span> : null}</span>
+                <span>{r.fields.courseCode ? <span className="tag" title={courseHover(r.fields.courseCode)}>{courseName(r.fields.courseCode)}</span> : null}</span>
               </li>
             ))}
           </ul>
