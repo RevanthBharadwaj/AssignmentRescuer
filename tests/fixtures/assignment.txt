@@ -1,0 +1,8 @@
+Assignment: Literature Review on Fairness in Machine Learning
+CIS 6930
+Instructions: Write a literature review of 1,500-2,000 words examining fairness metrics in classification.
+Use at least five peer-reviewed scholarly sources published since 2018.
+Format your paper and citations in APA 7th edition.
+Submit a .docx file through Canvas. Include a title page and reference page.
+This assignment is worth 100 points.
+Due: October 4, 2026 at 11:59 PM ET

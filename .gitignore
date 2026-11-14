@@ -1,0 +1,47 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Local databases and app data: never commit student data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Academic documents: never commit real coursework. Synthetic test
+# fixtures under tests/fixtures/ are the only exception.
+*.pdf
+*.docx
+*.doc
+*.rtf
+*.xlsx
+*.xls
+*.csv
+*.ics
+*.heic
+*.jpg
+*.jpeg
+*.webp
+!tests/fixtures/**
+uploads/
+imports/
+student-data/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
+e2e/screenshots/

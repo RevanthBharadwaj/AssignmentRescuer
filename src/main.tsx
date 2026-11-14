@@ -1,0 +1,22 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './ui/App';
+import { openDatabase } from './db/open';
+import { Repository } from './db/repository';
+import { AcademicService } from './core/service';
+import './ui/styles.css';
+import { errorMessage } from './ui/format';
+
+async function boot() {
+  const root = createRoot(document.getElementById('root')!);
+  try {
+    const { driver, mode } = await openDatabase();
+    const service = new AcademicService(new Repository(driver));
+    await service.init();
+    root.render(<StrictMode><App service={service} mode={mode} /></StrictMode>);
+  } catch (e) {
+    root.render(<p role="alert" style={{ padding: 24 }}>Could not open the local database: {errorMessage(e)}</p>);
+  }
+}
+
+void boot();

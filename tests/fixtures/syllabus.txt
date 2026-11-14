@@ -1,0 +1,20 @@
+University of North Florida
+Master of Science in Computing and Information Sciences
+CIS 6930: Applied Machine Learning
+Instructor: Dr. Jane Rivera
+Fall 2026 Syllabus
+Classes begin August 24, 2026
+Last day of classes: December 11, 2026
+Thanksgiving Break: November 25 - November 27, 2026
+
+Course Schedule
+Week 1: Introduction (Aug 24 - Aug 30)
+- Read Chapter 1 by Aug 26
+- Discussion 1: initial post due Wednesday Aug 26 at 11:59 PM ET, replies due Sunday Aug 30 at 11:59 PM ET
+Week 2: Regression (Aug 31 - Sep 6)
+- Homework 1 due Sep 6 at 11:59 PM ET (50 points)
+Week 3: Classification
+- Quiz 1 available Sep 7, due Sep 13
+- Project proposal due Sep 13
+Midterm Exam: October 14, 2026
+Final Project due December 9, 2026 at 5:00 PM
