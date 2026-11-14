@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 10: real sources and APA references (latest)**
+**Update 12: chat redesign and Word documents (latest)**
+
+1. Chat restyled to match the rest of the app (same surfaces, fonts and lime accents), larger, with a live thinking status (reading, thinking, writing, elapsed seconds).
+2. Word (.docx) export in APA 7 layout, saved to Downloads, plus a one click "Write this assignment as a document".
+3. The chat now knows today's date. The bottom bar fits six tabs on one row.
+4. 167 Vitest tests and 11 Rust tests pass.
+
+**Update 10: real sources and APA references**
 
 1. Source finder in Chat: Crossref and OpenAlex search, DOI check, APA 7 references, saved per assignment; the chat cites only saved sources.
 2. Free local model picker with info bubbles and setup help.

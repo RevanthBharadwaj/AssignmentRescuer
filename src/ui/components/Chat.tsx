@@ -7,6 +7,35 @@ import { PROVIDER_NAME, aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
 import { errorMessage } from '../format';
 import { SourceFinder } from './SourceFinder';
+import { buildDocx, docFileName } from '../../core/docxWriter';
+import { saveDocx } from '../exporter';
+import { titlePageLines } from './TitlePage';
+import type { AcademicDate } from '../../core/types';
+
+const WRITE_PROMPT = 'Write the complete, submission ready draft for this assignment as a paper in markdown: a # title, ## headings where the brief asks for sections, plain paragraphs in first person from my own notes and anything I pasted in this chat, and a final # References section that lists only my saved sources. Follow the word count and every requirement in the brief. If you cannot write it well without a personal example or notes from me, ask me for exactly what you need instead of writing it.';
+
+/** Text before a line of three dashes is the document; anything after is the assistant's notes. */
+const documentPart = (t: string) => t.split(/\n-{3,}\s*\n/)[0].trim();
+
+const PHASES = [
+  [0, 'Reading your course material'],
+  [4, 'Thinking it through'],
+  [10, 'Writing the answer'],
+  [25, 'Still working. Longer answers can take a minute'],
+] as const;
+
+function Thinking({ label }: { label: string | null }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => { const t = setInterval(() => setSecs((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  const phase = label ?? [...PHASES].reverse().find(([s]) => secs >= s)?.[1] ?? PHASES[0][1];
+  return (
+    <div className="bubble assistant thinking" role="status" aria-live="polite">
+      <span className="dots" aria-hidden="true"><i /><i /><i /></span>
+      <span>{phase}…</span>
+      <span className="muted small">{secs}s</span>
+    </div>
+  );
+}
 
 const uid = () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const preview = (t: string) => {
@@ -51,6 +80,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [asQuestion, setAsQuestion] = useState(false);
+  const [titlePageOn, setTitlePageOn] = useState(true);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (stored) setMessages(stored); }, [stored, key]);
@@ -63,19 +93,37 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const focus = base.assignments.find((a) => a.id === assignmentId) ?? null;
   const material = looksLikeMaterial(text) && !asQuestion;
 
+  const makeDoc = async (content: string, withTitlePage: boolean) => {
+    try {
+      const body = documentPart(content);
+      const first = /^#\s+(.+)/m.exec(body)?.[1]?.replace(/\*+/g, '').trim() ?? String(focus?.fields.title ?? 'Assignment draft');
+      let titlePage;
+      if (withTitlePage) {
+        const course = (await service.repository.listRecords('course')).find((c) => c.fields.code === (focus?.fields.courseCode ?? code)) ?? null;
+        const uni = (await service.repository.listRecords('university'))[0] ?? null;
+        titlePage = titlePageLines({ title: first, student: (await service.student()).name, university: (uni?.fields.name as string | null) ?? null, course, due: (focus?.fields.dueDate as AcademicDate | null) ?? null })
+          .filter((l) => l.text).map((l) => ({ text: l.text, bold: l.bold }));
+      }
+      const path = await saveDocx(docFileName(first), buildDocx(withTitlePage ? body.replace(/^#\s+.+\n?/, '') : body, { titlePage }));
+      toast(`Saved Word document: ${path}`);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   const push = async (next: ChatMessage[]) => { setMessages(next); await service.saveChatHistory(key, next); };
   const msg = (m: Omit<ChatMessage, 'id' | 'at'>): ChatMessage => ({ id: uid(), at: new Date().toISOString(), ...m });
 
-  const send = async () => {
-    const input = text.trim();
-    if (!input || busy) return;
+  const send = async (override?: { prompt: string; shown: string }) => {
+    const input = override ? override.prompt : text.trim();
+    if (!input || busy !== null) return;
     setError(null);
-    setText('');
+    if (!override) setText('');
     setAsQuestion(false);
-    let list = [...messages, msg({ role: 'user', content: preview(input) })];
+    let list = [...messages, msg({ role: 'user', content: override ? override.shown : preview(input) })];
     await push(list);
     try {
-      if (looksLikeMaterial(input) && !asQuestion) {
+      if (!override && looksLikeMaterial(input) && !asQuestion) {
         setBusy('Sorting what you pasted…');
         const target = await service.courseFor(input, code || null);
         if (!target) {
@@ -103,7 +151,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
           await push(list);
         }
       } else {
-        setBusy('Thinking…');
+        setBusy(override ? 'Writing your draft' : '');
         const reply = await service.chatReply(key, code || null, assignmentId || null, input, completeAi, today);
         list = [...list, msg({ role: 'assistant', content: reply.trim() })];
         await push(list);
@@ -161,19 +209,27 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
             {m.kind === 'intake' && m.proposalIds && m.proposalIds.length > 0 && <ProposalCard ids={m.proposalIds} />}
             {m.role === 'assistant' && !m.kind && (
               <div className="bubble-actions">
+                <button type="button" className="secondary small" onClick={() => void makeDoc(m.content, titlePageOn)}>Download as Word document</button>
                 <button type="button" className="link" onClick={() => { void navigator.clipboard?.writeText(m.content); toast('Copied'); }}>copy</button>
                 {assignmentId && !m.noteId && <button type="button" className="link" onClick={async () => { await service.saveDraft(assignmentId, m.content); refresh(); toast('Saved with the assignment'); }}>save with this assignment</button>}
               </div>
             )}
           </div>
         ))}
-        {busy && <div className="bubble assistant pending">{busy}</div>}
+        {busy !== null && <Thinking label={busy || null} />}
         <div ref={end} />
       </div>
 
       <SourceFinder assignmentId={assignmentId} />
       {error && <p role="alert" className="error">{error}</p>}
       {material && <p className="chat-hint small">This looks like course material. It will be sorted into {code || 'the matching course'} and saved once. <button type="button" className="link" onClick={() => setAsQuestion(true)}>send it as a question instead</button></p>}
+      {focus && (
+        <div className="chat-write">
+          <button type="button" disabled={busy !== null || !ready} onClick={() => void send({ prompt: WRITE_PROMPT, shown: `Write ${String(focus.fields.title)} as a document` })}>Write this assignment as a document</button>
+          <label className="inline"><input type="checkbox" checked={titlePageOn} onChange={(e) => setTitlePageOn(e.target.checked)} /> Include an APA title page</label>
+          <span className="muted small">Uses your notes, the brief and your saved sources. Download it as Word from the answer.</span>
+        </div>
+      )}
       <div className="chat-compose">
         <textarea
           aria-label="Message"
@@ -183,7 +239,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}
         />
-        <button type="button" className="chat-send" disabled={!!busy || !text.trim()} onClick={() => void send()}>{busy ? '…' : 'Send'}</button>
+        <button type="button" className="chat-send" disabled={busy !== null || !text.trim()} onClick={() => void send()}>Send</button>
       </div>
       <p className="muted small">Cmd+Enter (Ctrl+Enter on Windows) sends. Answers come from your saved material; check anything you will submit.</p>
     </section>

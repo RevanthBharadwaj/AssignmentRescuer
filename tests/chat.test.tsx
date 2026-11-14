@@ -5,10 +5,12 @@ import { App } from '../src/ui/App';
 
 vi.mock('../src/ui/feedFetcher', async () => ({ fetchFeed: async () => '' }));
 vi.mock('../src/ui/aiClient', () => ({
-  completeAi: async () => 'Start with the Unit 1 reading, then outline your post.',
+  completeAi: async () => '# Leadership and Trust\n\nMy first paragraph.\n\n# References\nRivera, M. (2021). Example.',
   hasSecret: async () => false,
   setSecret: async () => undefined,
 }));
+const saved: { name: string; size: number }[] = [];
+vi.mock('../src/ui/exporter', () => ({ saveDocx: async (name: string, bytes: Uint8Array) => { saved.push({ name, size: bytes.length }); return `Downloads/${name}`; } }));
 vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
 vi.mock('../src/ui/scholarClient', () => ({
   scholarGet: async (url: string) => {
@@ -59,7 +61,7 @@ describe('unit blocks and chat', () => {
 
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'What should I read first?' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
-    expect(await screen.findByText(/Turn on the AI|Start with the Unit 1 reading/)).toBeInTheDocument();
+    expect(await screen.findByText(/Turn on the AI/)).toBeInTheDocument();
   });
 
   it('finds a real source, saves its APA reference with the assignment and lets the chat cite only that', async () => {
@@ -78,5 +80,20 @@ describe('unit blocks and chat', () => {
     expect(refs).toHaveLength(1);
     expect(String(refs[0].fields.summary)).toBe('Rivera, M. (2021). Learning Habits in Online Seminars. Journal of Example Studies, 12(3), 45–67. https://doi.org/10.9999/example.101');
     expect(await service.chatSystemFor('DSC 6400', a.id, '2026-09-02')).toContain('VERIFIED SOURCES');
+  });
+
+  it('writes the assignment as a document and saves it as a Word file', async () => {
+    const service = await setup();
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
+    const a = (await service.repository.listRecords('assignment'))[0];
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
+    fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
+    fireEvent.change(screen.getByLabelText('Working on'), { target: { value: a.id } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Write this assignment as a document' }));
+    expect(await screen.findByText(/My first paragraph/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Download as Word document' }));
+    expect(await screen.findByText(/Saved Word document/)).toBeInTheDocument();
+    expect(saved[0].name).toBe('Leadership and Trust.docx');
+    expect(saved[0].size).toBeGreaterThan(500);
   });
 });

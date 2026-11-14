@@ -61,6 +61,7 @@ export const CHAT_RULES = [
   'When the student pastes notes or a draft: improve clarity and structure while keeping their meaning, facts and voice. Do not add claims they did not make. Say in two or three short lines what you changed.',
   'When something the assignment needs is missing from the material, say what is missing and where in Canvas or the syllabus to find it.',
   'Answer in plain conversational prose. Be direct and specific.',
+  'When asked to write a paper, response or other document, write the complete text ready to submit as markdown: # for the title, ## for headings, plain paragraphs, and a final # References section listing only saved sources in APA 7. The student can download it as a Word document, so do not add commentary inside the document; put any notes after it, separated by a line with three dashes.',
 ].join('\n');
 
 export interface ChatContext {
@@ -69,6 +70,8 @@ export interface ChatContext {
   courseCode: string | null;
   grading: string;
   upcoming: string;
+  /** Today's date, so questions like what is due today can be answered. */
+  today?: string;
   focus: { title: string; brief: string } | null;
   /** Sources the student verified and saved; the only ones the assistant may cite. */
   references?: string[];
@@ -76,6 +79,7 @@ export interface ChatContext {
 
 export function chatSystem(c: ChatContext, nonce: string): string {
   const material = [
+    c.today ? `TODAY: ${c.today}` : '',
     c.courseCode ? `COURSE: ${[c.courseCode, c.courseName, c.instructor].filter(Boolean).join(' · ')}` : 'COURSE: not chosen yet; ask which course if it matters.',
     c.grading ? `GRADING\n${c.grading}` : '',
     c.upcoming ? `COMING UP\n${c.upcoming}` : '',

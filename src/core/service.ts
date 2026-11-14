@@ -21,7 +21,7 @@ import { buildAssignmentContext, toAnnouncement } from './courseContent';
 import { normaliseCourseCode } from './util';
 import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
 import { buildBrief, briefToText, type Brief } from './brief';
-import { milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
+import { prettyDate, milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
 import { summariseUnits, type UnitSummary } from './units';
 import { apaText, inText, type Work } from './scholar';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
@@ -608,7 +608,7 @@ export class AcademicService {
     }
     return chatSystem({
       courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
-      grading, upcoming, focus, references,
+      grading, upcoming, focus, references, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
     }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
   }
 
