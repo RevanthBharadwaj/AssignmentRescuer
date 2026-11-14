@@ -4,7 +4,7 @@ import { useAsync } from '../useAsync';
 import type { ConfirmedRecord } from '../../core/types';
 import { ANTHROPIC_MODELS, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
 import { completeAi, hasSecret, setSecret } from '../aiClient';
-import { CLOUD_SETUP, DEFAULT_LOCAL_TAG, HELPER_MODELS, LOCAL_MODELS, pullCommand, stars } from '../../core/models';
+import { CLOUD_SETUP, DEFAULT_EMBED_TAG, DEFAULT_LOCAL_TAG, DEFAULT_VISION_TAG, DEFAULT_WRITING_TAG, EMBED_MODELS, HELPER_MODELS, LOCAL_MODELS, ROLE_INFO, modelFor, modelLabel, pullCommand, stars, type Role } from '../../core/models';
 import { errorMessage } from '../format';
 
 /* ---------- a saved AI note ---------- */
@@ -24,7 +24,13 @@ export function AiNote({ note }: { note: ConfirmedRecord }) {
         <span className="muted small">{String(note.fields.model)} · {new Date(String(note.fields.createdAt)).toLocaleString()}</span>
       </div>
       <p style={{ whiteSpace: 'pre-wrap' }}>{String(note.fields.summary)}</p>
-      {actions.length > 0 && (
+      {actions.length > 0 && note.fields.kind === 'syllabus' && (
+        <>
+          <h4>Key facts</h4>
+          <dl className="saved-values">{actions.map((a, i) => { const [k, ...v] = a.text.split(': '); return <div key={i}><dt>{k}</dt><dd>{v.join(': ')}</dd></div>; })}</dl>
+        </>
+      )}
+      {actions.length > 0 && note.fields.kind !== 'syllabus' && (
         <>
           <h4>What to do</h4>
           <ul className="checklist">
@@ -85,6 +91,7 @@ export function AiButton({ label, run, onDone }: { label: string; run: () => Pro
 }
 
 export const runAnnouncement = (service: ReturnType<typeof useApp>['service'], id: string) => service.analyzeAnnouncement(id, completeAi);
+export const runSyllabus = (service: ReturnType<typeof useApp>['service'], id: string) => service.organizeSyllabus(id, completeAi);
 export const runAssignment = (service: ReturnType<typeof useApp>['service'], id: string) => service.analyzeAssignment(id, completeAi);
 
 /* ---------- settings (Semester setup step 05) ---------- */
@@ -109,6 +116,41 @@ function InfoTip({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+function RoleRow({ role, value, options, none, onChange, open, onSetup }: {
+  role: Role; value: string; options: { tag: string; name: string; about: string; size: string; stars: number }[]; none: string;
+  onChange: (tag: string) => void; open: boolean; onSetup: (tag: string) => void;
+}) {
+  const info = ROLE_INFO[role];
+  const chosen = options.find((o) => o.tag === value);
+  return (
+    <div className="role-row">
+      <div className="role-head">
+        <strong>{info.label}</strong>
+        <InfoTip label={`About the ${info.label}`}>
+          <b>{info.label}</b>
+          <span>{info.hint}</span>
+          {chosen && <span>{chosen.name}: {chosen.about} Quality <span aria-label={`${chosen.stars} out of 5`}>{stars(chosen.stars)}</span>. Download {chosen.size}.</span>}
+        </InfoTip>
+        <span className="muted small">{info.job}</span>
+      </div>
+      <div className="row">
+        <select aria-label={info.label} value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{none}</option>
+          {options.map((o) => <option key={o.tag} value={o.tag}>{o.name} ({o.size})</option>)}
+        </select>
+        {value && <button type="button" className="secondary small" onClick={() => { void navigator.clipboard?.writeText(pullCommand(value)); onSetup(value); }}>Set up</button>}
+      </div>
+      {open && value && (
+        <ol className="setup-steps small">
+          <li>Install Ollama from ollama.com and open it (once).</li>
+          <li>In Terminal (Mac) or PowerShell (Windows) run <code>{pullCommand(value)}</code>. It is copied for you.</li>
+          <li>Come back and press Save AI settings.</li>
+        </ol>
+      )}
+    </div>
+  );
+}
+
 export function AiSettingsCard() {
   const { service, version, refresh } = useApp();
   const { data } = useAsync(async () => ({ s: await service.aiSettings(), keys: { anthropic: await hasSecret('anthropic'), openai: await hasSecret('openai') } }), [version]);
@@ -129,7 +171,12 @@ export function AiSettingsCard() {
       <>
         <dl className="saved-values">
           <div><dt>Provider</dt><dd>{PROVIDERS.find((p) => p.id === data.s.provider)?.label}</dd></div>
-          <div><dt>Model</dt><dd className="mono small">{data.s.model}</dd></div>
+          <div><dt>Everyday model</dt><dd className="mono small">{modelLabel(data.s.model)}</dd></div>
+          {data.s.provider === 'ollama' && <>
+            <div><dt>Assignment model</dt><dd className="mono small">{modelLabel(modelFor(data.s, 'writing'))}</dd></div>
+            <div><dt>Image model</dt><dd className={modelFor(data.s, 'vision') ? 'mono small' : 'none'}>{modelFor(data.s, 'vision') ? modelLabel(modelFor(data.s, 'vision')) : 'Not set up'}</dd></div>
+            <div><dt>Search model</dt><dd className={modelFor(data.s, 'embed') ? 'mono small' : 'none'}>{modelFor(data.s, 'embed') ? modelLabel(modelFor(data.s, 'embed')) : 'Keywords only'}</dd></div>
+          </>}
           {isCloud(data.s.provider) && <div><dt>API key</dt><dd className={saved ? '' : 'none'}>{saved ? 'Saved in your keychain' : 'Not saved'}</dd></div>}
         </dl>
         <button type="button" className="modify" onClick={() => { setDraft(data.s); setEditing(true); }}>Modify</button>
@@ -158,7 +205,7 @@ export function AiSettingsCard() {
       <div className="kind-options">
         {PROVIDERS.map((p) => (
           <label key={p.id} className={`kind-option ${s.provider === p.id ? 'on' : ''}`}>
-            <input type="radio" name="ai-provider" checked={s.provider === p.id} onChange={() => setDraft({ ...s, provider: p.id, model: defaultModel(p.id) })} />
+            <input type="radio" name="ai-provider" checked={s.provider === p.id} onChange={() => setDraft({ ...s, provider: p.id, model: defaultModel(p.id), ...(p.id === 'ollama' ? { writingModel: s.writingModel || DEFAULT_WRITING_TAG, visionModel: s.visionModel || DEFAULT_VISION_TAG, embedModel: s.embedModel || DEFAULT_EMBED_TAG } : {}) })} />
             <strong>{p.label}</strong>
             <span className="muted small">{p.help}</span>
           </label>
@@ -166,6 +213,7 @@ export function AiSettingsCard() {
       </div>
       {s.provider === 'ollama' && (
         <>
+          <h3>Everyday model</h3>
           <div className="model-list" role="radiogroup" aria-label="Free local models">
             {LOCAL_MODELS.map((m) => (
               <div key={m.tag} className={`model-card ${s.model === m.tag ? 'on' : ''}`}>
@@ -197,6 +245,11 @@ export function AiSettingsCard() {
           <label>Other model name from Ollama
             <input value={LOCAL_MODELS.some((m) => m.tag === s.model) ? '' : s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} placeholder="for example mistral" />
           </label>
+          <h3>Other jobs, other models</h3>
+          <p className="muted small">The app can use a different free model for each job. Each runs on this computer. Pick one, press Set up, and run the command once.</p>
+          <RoleRow role="writing" value={s.writingModel ?? ''} none="Same as the everyday model" options={LOCAL_MODELS.filter((m) => !m.vision)} open={setup === 'writing'} onSetup={() => setSetup('writing')} onChange={(tag) => setDraft({ ...s, writingModel: tag })} />
+          <RoleRow role="vision" value={s.visionModel ?? ''} none="Not set up (images will not be read)" options={LOCAL_MODELS.filter((m) => m.vision)} open={setup === 'vision'} onSetup={() => setSetup('vision')} onChange={(tag) => setDraft({ ...s, visionModel: tag })} />
+          <RoleRow role="embed" value={s.embedModel ?? ''} none="Not set up (search by keywords only)" options={EMBED_MODELS} open={setup === 'embed'} onSetup={() => setSetup('embed')} onChange={(tag) => setDraft({ ...s, embedModel: tag })} />
           <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => setDraft({ ...s, ollamaUrl: e.target.value })} /></label>
           <details className="helper-models">
             <summary>Search and checking models planned for later</summary>

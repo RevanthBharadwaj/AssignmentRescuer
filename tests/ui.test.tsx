@@ -22,6 +22,8 @@ vi.mock('../src/ui/aiClient', () => ({
   },
   hasSecret: async () => false,
   setSecret: async () => undefined,
+  embedAi: async (_m: string, _u: string, t: string[]) => t.map(() => [1, 0]),
+  describeImage: async () => 'Week 1 Reading due Friday, 20 points',
 }));
 vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
 import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
@@ -216,7 +218,7 @@ describe('desktop UI', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Set up' })[0]);
     expect(screen.getByText(/ollama pull qwen3:4b/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
-    expect(await screen.findByText('qwen3:4b')).toBeInTheDocument();
+    expect((await screen.findAllByText('Qwen3 4B')).length).toBeGreaterThan(0);
 
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));

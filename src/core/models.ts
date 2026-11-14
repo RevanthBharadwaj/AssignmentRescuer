@@ -65,3 +65,54 @@ export const CLOUD_SETUP: CloudSetup[] = [
 
 export const pullCommand = (tag: string) => `ollama pull ${tag}`;
 export const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+/* ---------- which model does which job ---------- */
+
+export type Role = 'chat' | 'writing' | 'vision' | 'embed';
+
+export interface EmbedModel { tag: string; name: string; size: string; about: string; stars: 1 | 2 | 3 | 4 | 5; hf: string; recommended?: string }
+export const EMBED_MODELS: EmbedModel[] = [
+  { tag: 'nomic-embed-text', name: 'Nomic Embed Text', size: '0.3 GB', hf: 'nomic-ai/nomic-embed-text-v1.5', stars: 4, recommended: 'Start here', about: 'Finds the passages of your syllabus and notes that match a question, by meaning and not just by word. Small and fast.' },
+  { tag: 'all-minilm', name: 'all MiniLM L6 v2', size: '0.05 GB', hf: 'sentence-transformers/all-MiniLM-L6-v2', stars: 3, about: 'Tiny and very fast. A good pick on a slow computer; slightly less precise than Nomic.' },
+  { tag: 'bge-m3', name: 'BGE M3', size: '1.2 GB', hf: 'BAAI/bge-m3', stars: 5, about: 'The most accurate search model here, from the BGE family. Larger download and slower on older laptops.' },
+];
+
+export const ROLE_INFO: Record<Role, { label: string; job: string; hint: string }> = {
+  chat: { label: 'Everyday model', job: 'Questions, summaries and sorting what you paste', hint: 'Your default free model. Used whenever the message is not about an assignment.' },
+  writing: { label: 'Assignment model', job: 'Planning, drafting and polishing assignments', hint: 'Used when you work on an assignment or paste assignment material. A stronger model gives better writing.' },
+  vision: { label: 'Image model', job: 'Reading screenshots and photos', hint: 'Used when you attach a picture. It runs on this computer; the image is never uploaded.' },
+  embed: { label: 'Search model', job: 'Finding the right passages in your saved material', hint: 'Used before each answer to pull the passages that matter. Optional: without it the app searches by keywords.' },
+};
+
+export const DEFAULT_WRITING_TAG = 'qwen3:8b';
+export const DEFAULT_VISION_TAG = 'qwen2.5vl:3b';
+export const DEFAULT_EMBED_TAG = 'nomic-embed-text';
+
+interface RoleSettings { provider: string; model: string; writingModel?: string; visionModel?: string; embedModel?: string }
+
+/** The model for a job. Empty means that job is not set up. */
+export function modelFor(s: RoleSettings, role: Role): string {
+  if (role === 'chat') return s.model;
+  if (role === 'writing') return s.writingModel || s.model;
+  if (role === 'vision') return s.visionModel ?? '';
+  return s.embedModel ?? '';
+}
+
+/** Short name for the screen, for example "Qwen3 8B". */
+export function modelLabel(tag: string): string {
+  const all = [...LOCAL_MODELS.map((m) => [m.tag, m.name]), ...EMBED_MODELS.map((m) => [m.tag, m.name])];
+  return all.find(([t]) => t === tag)?.[1] ?? tag;
+}
+
+/**
+ * Is a message about an assignment? 2 or more cues: yes. None: no. One cue:
+ * unsure, so the chat asks.
+ */
+const CUES = [/\bdue\b/i, /\brubric\b/i, /\bpoints?\b/i, /\bsubmit|submission\b/i, /\bdiscussion (question|post|board|prompt)\b/i, /\b(essay|paper|project|assignment|case study|reflection|response paper)\b/i, /\bword(s| count)?\b.*\d|\d.*\bwords?\b/i, /\bAPA\b/i, /\bprompt\b/i, /\b(write|draft|outline|rewrite|polish)\b/i];
+export type Intent = 'assignment' | 'general' | 'unsure';
+export function guessIntent(text: string, titles: string[] = []): Intent {
+  const lower = text.toLowerCase();
+  if (titles.some((t) => t.length > 6 && lower.includes(t.toLowerCase()))) return 'assignment';
+  const n = CUES.filter((re) => re.test(text)).length;
+  return n >= 3 ? 'assignment' : n === 0 ? 'general' : 'unsure';
+}

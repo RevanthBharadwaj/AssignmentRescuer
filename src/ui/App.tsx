@@ -11,6 +11,7 @@ import { useAsync } from './useAsync';
 import { Calendar } from './components/Calendar';
 import { Chat } from './components/Chat';
 import { useReminderLoop } from './useReminderLoop';
+import { Tour } from './components/Guide';
 import { Toasts, type Toast } from './ux';
 import { Breadcrumbs, type Crumb } from './components/Breadcrumbs';
 
@@ -75,6 +76,12 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
   useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
   const clock = useClock();
+  const [tour, setTour] = useState(false);
+  useEffect(() => {
+    if (mode === 'test') return;
+    void service.repository.getSetting<boolean>('tour.done', false).then((d) => { if (!d) setTour(true); });
+  }, [service, mode]);
+  const closeTour = useCallback(() => { setTour(false); void service.repository.setSetting('tour.done', true); }, [service]);
   const area = AREA[route.name];
 
   return (
@@ -85,6 +92,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           <nav aria-label="Main">
             <button type="button" className={route.name === 'setup' ? 'active' : ''} aria-current={route.name === 'setup' ? 'page' : undefined} onClick={() => go({ name: 'setup' })}>Semester setup</button>
             <button type="button" className={route.name === 'add' ? 'active' : ''} aria-current={route.name === 'add' ? 'page' : undefined} onClick={() => go({ name: 'add' })}>Import a syllabus</button>
+            <button type="button" onClick={() => setTour(true)}>Take the tour</button>
             <button type="button" className={route.name === 'features' ? 'active' : ''} aria-current={route.name === 'features' ? 'page' : undefined} onClick={() => go({ name: 'features' })}>Features</button>
           </nav>
           {mode === 'browser-preview' && <span className="preview-note">browser preview</span>}
@@ -106,6 +114,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           {route.name === 'chat' && <Chat code={route.code} assignmentId={route.assignmentId} />}
         </main>
         <Toasts items={toasts} dismiss={dismiss} />
+        {tour && <Tour onClose={closeTour} />}
 
         <nav className="dock" aria-label="Workflow">
           {DOCK.map((d) => {

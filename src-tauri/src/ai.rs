@@ -174,6 +174,41 @@ pub fn ai_complete(
     }
 }
 
+
+/// Reads a picture with a local vision model. The image never leaves this computer.
+#[tauri::command]
+pub fn ai_describe_image(model: String, base_url: Option<String>, image_base64: String, instruction: String) -> Result<String, String> {
+    if image_base64.len() > 30_000_000 { return Err("That image is too large. Try a smaller screenshot.".into()); }
+    let base = validate_local_url(base_url.as_deref().unwrap_or("http://localhost:11434"))?;
+    let body = json!({
+        "model": model, "stream": false,
+        "messages": [{ "role": "user", "content": instruction, "images": [image_base64] }],
+    });
+    let resp: Value = agent(300)
+        .post(&format!("{base}/api/chat"))
+        .send_json(body)
+        .map_err(|e| http_error(e, "Ollama"))?
+        .into_json()
+        .map_err(|_| "Unexpected answer from Ollama.".to_string())?;
+    resp["message"]["content"].as_str().map(String::from).ok_or_else(|| "The vision model returned no text.".into())
+}
+
+/// Turns passages into number lists for search by meaning, with a local embedding model.
+#[tauri::command]
+pub fn ai_embed(model: String, base_url: Option<String>, texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
+    if texts.is_empty() { return Ok(vec![]); }
+    if texts.len() > 200 || texts.iter().map(|t| t.len()).sum::<usize>() > 400_000 { return Err("Too much text to search at once.".into()); }
+    let base = validate_local_url(base_url.as_deref().unwrap_or("http://localhost:11434"))?;
+    let resp: Value = agent(300)
+        .post(&format!("{base}/api/embed"))
+        .send_json(json!({ "model": model, "input": texts }))
+        .map_err(|e| http_error(e, "Ollama"))?
+        .into_json()
+        .map_err(|_| "Unexpected answer from Ollama.".to_string())?;
+    let rows = resp["embeddings"].as_array().ok_or_else(|| "The embedding model returned nothing.".to_string())?;
+    Ok(rows.iter().map(|r| r.as_array().map(|a| a.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect()).unwrap_or_default()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{check_key, conversation, validate_local_url, Turn};

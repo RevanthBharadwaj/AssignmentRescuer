@@ -16,7 +16,12 @@ export interface ChatMessage extends ChatTurn {
   noteId?: string;
   /** Proposals waiting for approval from a pasted message. */
   proposalIds?: string[];
-  kind?: 'intake';
+  kind?: 'intake' | 'ask';
+  /** Which model wrote an assistant reply, and for which kind of work. */
+  model?: string;
+  task?: 'assignment' | 'general';
+  /** A pasted message waiting for the student to say whether it is about an assignment. */
+  pending?: string;
 }
 
 export function looksLikeMaterial(text: string): boolean {
@@ -75,6 +80,8 @@ export interface ChatContext {
   focus: { title: string; brief: string } | null;
   /** Sources the student verified and saved; the only ones the assistant may cite. */
   references?: string[];
+  /** Passages of the student's saved material found for this question. */
+  passages?: string[];
 }
 
 export function chatSystem(c: ChatContext, nonce: string): string {
@@ -84,6 +91,7 @@ export function chatSystem(c: ChatContext, nonce: string): string {
     c.grading ? `GRADING\n${c.grading}` : '',
     c.upcoming ? `COMING UP\n${c.upcoming}` : '',
     c.focus ? `FOCUS ASSIGNMENT: ${c.focus.title}\n${c.focus.brief}` : '',
+    c.passages?.length ? `RELEVANT PASSAGES FROM THE STUDENT'S SAVED MATERIAL\n${c.passages.join('\n---\n')}` : '',
     c.references?.length ? `VERIFIED SOURCES (found in Crossref or OpenAlex; cite only these, in APA 7, and tell the student when a claim needs a source they have not saved)\n${c.references.join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
   return `${CHAT_RULES}\n\n${wrapAsUntrustedData(material.slice(0, 40_000), 'course material', nonce)}`;

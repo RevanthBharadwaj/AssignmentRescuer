@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Hint } from './Guide';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ConfirmedRecord } from '../../core/types';
@@ -106,6 +107,7 @@ export function Calendar() {
         <div>
           <span className="chip">calendar</span>
           <h1 id="cal-title">{title}</h1>
+          <Hint id="calendar" />
         </div>
         <div className="cal-controls">
           <div className="segmented" role="group" aria-label="Calendar view">

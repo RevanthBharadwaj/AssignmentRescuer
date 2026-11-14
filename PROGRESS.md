@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 12: chat redesign and Word documents (latest)**
+**Update 13: structured syllabus, models per job, walkthrough (latest)**
+
+1. The syllabus tab now shows grouped, whole sections instead of one card per short line (checked on a real syllabus, not committed). "Organize with AI" saves a summary, key facts and easy to miss rules.
+2. Four model jobs: everyday, assignment, image and search. Images are read by a local vision model and never uploaded; search by meaning uses a local embedding model and falls back to keywords. Every chat reply names its model. Pastes the chat is unsure about are confirmed with the student first.
+3. Attach files and screenshots in Chat; first run tour and page tips.
+4. 180 Vitest tests and 11 Rust tests pass.
+
+**Update 12: chat redesign and Word documents**
 
 1. Chat restyled to match the rest of the app (same surfaces, fonts and lime accents), larger, with a live thinking status (reading, thinking, writing, elapsed seconds).
 2. Word (.docx) export in APA 7 layout, saved to Downloads, plus a one click "Write this assignment as a document".

@@ -3,9 +3,12 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { ChangeProposal, ConfirmedRecord } from '../../core/types';
 import { looksLikeMaterial, type ChatMessage } from '../../core/chat';
-import { PROVIDER_NAME, aiReady } from '../../core/ai';
-import { completeAi } from '../aiClient';
+import { aiReady } from '../../core/ai';
+import { completeAi, describeImage, embedAi } from '../aiClient';
+import { guessIntent, modelFor, modelLabel } from '../../core/models';
+import { readFileBytes } from './AddInfo';
 import { errorMessage } from '../format';
+import { Hint } from './Guide';
 import { SourceFinder } from './SourceFinder';
 import { buildDocx, docFileName } from '../../core/docxWriter';
 import { saveDocx } from '../exporter';
@@ -114,47 +117,110 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const push = async (next: ChatMessage[]) => { setMessages(next); await service.saveChatHistory(key, next); };
   const msg = (m: Omit<ChatMessage, 'id' | 'at'>): ChatMessage => ({ id: uid(), at: new Date().toISOString(), ...m });
 
-  const send = async (override?: { prompt: string; shown: string }) => {
-    const input = override ? override.prompt : text.trim();
+  const titles = base.assignments.map((r) => String(r.fields.title));
+  const roleName = (t: 'assignment' | 'general') => (t === 'assignment' ? 'assignment model' : 'everyday model');
+
+  /** One model written answer, with the model named while it works and on the reply. */
+  const answer = async (list: ChatMessage[], prompt: string, task: 'assignment' | 'general') => {
+    const tag = modelFor(base.ai, task === 'assignment' ? 'writing' : 'chat');
+    setBusy(`${task === 'assignment' ? 'Working on your assignment' : 'Thinking'} with ${modelLabel(tag)}`);
+    const r = await service.chatReply(key, code || null, assignmentId || null, prompt, completeAi, today, { task, embed: embedAi });
+    const next = [...list, msg({ role: 'assistant', content: r.text.trim(), model: r.model, task: r.task })];
+    await push(next);
+    return next;
+  };
+
+  /** Save pasted or attached material into its course, once, and explain what happened. */
+  const intake = async (list: ChatMessage[], target: string, inputs: { text?: string; files?: { name: string; bytes: Uint8Array }[] }, task: 'assignment' | 'general') => {
+    setBusy('Sorting what you gave me…');
+    if (target !== code) setCode(target);
+    const r = await service.chatIntake(target, inputs);
+    list = [...list, msg({ role: 'assistant', content: r.reply, kind: 'intake', proposalIds: r.proposalIds })];
+    await push(list);
+    refresh();
+    if (r.announcementIds.length && ready) {
+      for (const id of r.announcementIds) {
+        setBusy(`Reading the announcement with ${modelLabel(modelFor(base.ai, 'chat'))}`);
+        const note = await service.analyzeAnnouncement(id, completeAi);
+        const actions = (Array.isArray(note.fields.actions) ? note.fields.actions : []).map((a) => { try { return (JSON.parse(String(a)) as { text: string; due: string | null }); } catch { return { text: String(a), due: null }; } });
+        const body = [String(note.fields.summary), actions.length ? `\nWhat to do:\n${actions.map((a) => `• ${a.text}${a.due ? ` (${a.due})` : ''}`).join('\n')}` : '', (note.fields.cautions as string[] | undefined)?.length ? `\nEasy to miss:\n${(note.fields.cautions as string[]).map((c) => `• ${c}`).join('\n')}` : ''].join('\n').trim();
+        list = [...list, msg({ role: 'assistant', content: body, noteId: note.id, model: modelFor(base.ai, 'chat'), task: 'general' })];
+        await push(list);
+      }
+      refresh();
+    } else if (r.announcementIds.length) {
+      list = [...list, msg({ role: 'assistant', content: 'It is saved under Announcements. Turn on the AI assistant in Semester setup and I will also tell you what it asks you to do.' })];
+      await push(list);
+    }
+    if (task === 'assignment' && ready) {
+      list = await answer(list, 'I just added assignment material. In three or four short lines: what is required, how it is scored, and what I should read or do first?', 'assignment');
+    }
+    return list;
+  };
+
+  const send = async (override?: { prompt: string; shown: string }, decided?: { text: string; task: 'assignment' | 'general' }) => {
+    const input = decided ? decided.text : override ? override.prompt : text.trim();
     if (!input || busy !== null) return;
     setError(null);
-    if (!override) setText('');
+    if (!override && !decided) setText('');
     setAsQuestion(false);
-    let list = [...messages, msg({ role: 'user', content: override ? override.shown : preview(input) })];
+    let list = decided ? messages.filter((m) => m.kind !== 'ask') : [...messages, msg({ role: 'user', content: override ? override.shown : preview(input) })];
     await push(list);
     try {
-      if (!override && looksLikeMaterial(input) && !asQuestion) {
-        setBusy('Sorting what you pasted…');
+      const paste = !override && (decided ? true : looksLikeMaterial(input) && !asQuestion);
+      if (paste) {
+        const intent = decided ? decided.task : guessIntent(input, titles);
+        if (intent === 'unsure') {
+          list = [...list, msg({ role: 'assistant', kind: 'ask', pending: input, content: 'Is this about an assignment, or something else, like an announcement, the syllabus or general course information? I use a stronger model for assignments.' })];
+          await push(list);
+          return;
+        }
+        setBusy('Working out which course this is for…');
         const target = await service.courseFor(input, code || null);
         if (!target) {
           list = [...list, msg({ role: 'assistant', content: 'I could not tell which course this belongs to. Choose the course at the top, then paste it again.' })];
           await push(list);
           return;
         }
-        if (target !== code) setCode(target);
-        const r = await service.chatIntake(target, input);
-        list = [...list, msg({ role: 'assistant', content: r.reply, kind: 'intake', proposalIds: r.proposalIds })];
-        await push(list);
-        refresh();
-        if (r.announcementIds.length && ready) {
-          setBusy('Reading the announcement…');
-          for (const id of r.announcementIds) {
-            const note = await service.analyzeAnnouncement(id, completeAi);
-            const actions = (Array.isArray(note.fields.actions) ? note.fields.actions : []).map((a) => { try { return (JSON.parse(String(a)) as { text: string; due: string | null }); } catch { return { text: String(a), due: null }; } });
-            const body = [String(note.fields.summary), actions.length ? `\nWhat to do:\n${actions.map((a) => `• ${a.text}${a.due ? ` (${a.due})` : ''}`).join('\n')}` : '', (note.fields.cautions as string[] | undefined)?.length ? `\nEasy to miss:\n${(note.fields.cautions as string[]).map((c) => `• ${c}`).join('\n')}` : ''].join('\n').trim();
-            list = [...list, msg({ role: 'assistant', content: body, noteId: note.id })];
-            await push(list);
-          }
-          refresh();
-        } else if (r.announcementIds.length && !ready) {
-          list = [...list, msg({ role: 'assistant', content: 'It is saved under Announcements. Turn on the AI assistant in Semester setup and I will also tell you what it asks you to do.' })];
-          await push(list);
-        }
+        await intake(list, target, { text: input }, intent);
       } else {
-        setBusy(override ? 'Writing your draft' : '');
-        const reply = await service.chatReply(key, code || null, assignmentId || null, input, completeAi, today);
-        list = [...list, msg({ role: 'assistant', content: reply.trim() })];
+        const task = override ? 'assignment' : assignmentId ? 'assignment' : decided ? decided : guessIntent(input, titles) === 'assignment' ? 'assignment' : 'general';
+        await answer(list, input, task as 'assignment' | 'general');
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const attach = async (files: FileList | null) => {
+    if (!files?.length || busy !== null) return;
+    setError(null);
+    const picked = await Promise.all(Array.from(files).map(async (f) => ({ name: f.name, bytes: await readFileBytes(f), image: /\.(png|jpe?g)$/i.test(f.name) })));
+    let list = [...messages, msg({ role: 'user', content: `Attached: ${picked.map((p) => p.name).join(', ')}` })];
+    await push(list);
+    try {
+      if (!code) {
+        list = [...list, msg({ role: 'assistant', content: 'Choose the course at the top first, then attach the file again so I save it in the right place.' })];
         await push(list);
+        return;
+      }
+      const docs = picked.filter((p) => !p.image);
+      const imgs = picked.filter((p) => p.image);
+      if (docs.length) list = await intake(list, code, { files: docs }, 'general');
+      for (const im of imgs) {
+        const vision = modelFor(base.ai, 'vision');
+        if (!vision) {
+          list = [...list, msg({ role: 'assistant', content: `To read ${im.name} I need an image model on this computer. Set one up in Semester setup, under AI assistant, in the "Image model" row. Nothing is uploaded; it runs locally.` })];
+          await push(list);
+          continue;
+        }
+        setBusy(`Reading ${im.name} with ${modelLabel(vision)}`);
+        const seen = await describeImage(vision, base.ai.ollamaUrl, im.bytes, 'Transcribe all the text in this screenshot exactly as written, keeping headings, due dates, point values and table rows on their own lines. Do not add anything.');
+        list = [...list, msg({ role: 'assistant', content: 'I read the image. Here is the text I found:\n\n' + seen.trim(), model: vision, task: 'general' })];
+        await push(list);
+        list = await intake(list, code, { text: seen }, guessIntent(seen, titles) === 'assignment' ? 'assignment' : 'general');
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -165,13 +231,14 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
 
   return (
     <section className="chat" aria-labelledby="chat-title">
+      <Hint id="chat" />
       <header className="chat-head">
         <div>
           <h1 id="chat-title">Chat</h1>
           <p className="muted small">Ask about your courses, or paste anything copied from Canvas. I sort it into the right course and keep it ready for your assignment.</p>
         </div>
         <span className={`chat-ai ${ready ? 'on' : 'off'}`}>
-          {ready ? `${PROVIDER_NAME[base.ai.provider]} · ${base.ai.model}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
+          {ready ? `Everyday: ${modelLabel(modelFor(base.ai, 'chat'))} · Assignments: ${modelLabel(modelFor(base.ai, 'writing'))}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
         </span>
       </header>
 
@@ -206,8 +273,15 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         {messages.map((m) => (
           <div key={m.id} className={`bubble ${m.role} ${m.kind ?? ''}`}>
             <div className="bubble-text">{m.content}</div>
+            {m.kind === 'ask' && m.pending && (
+              <div className="bubble-actions">
+                <button type="button" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'assignment' })}>It is about an assignment</button>
+                <button type="button" className="secondary" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'general' })}>Something else</button>
+              </div>
+            )}
+            {m.role === 'assistant' && m.model && <div className="model-caption muted small">{modelLabel(m.model)} · {roleName(m.task ?? 'general')}</div>}
             {m.kind === 'intake' && m.proposalIds && m.proposalIds.length > 0 && <ProposalCard ids={m.proposalIds} />}
-            {m.role === 'assistant' && !m.kind && (
+            {m.role === 'assistant' && !m.kind && m.model && (
               <div className="bubble-actions">
                 <button type="button" className="secondary small" onClick={() => void makeDoc(m.content, titlePageOn)}>Download as Word document</button>
                 <button type="button" className="link" onClick={() => { void navigator.clipboard?.writeText(m.content); toast('Copied'); }}>copy</button>
@@ -239,7 +313,13 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}
         />
-        <button type="button" className="chat-send" disabled={busy !== null || !text.trim()} onClick={() => void send()}>Send</button>
+        <div className="chat-buttons">
+          <label className="attach secondary-label" title="Attach a PDF, Word file, text file or screenshot">
+            Attach
+            <input type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} aria-label="Attach files" />
+          </label>
+          <button type="button" className="chat-send" disabled={busy !== null || !text.trim()} onClick={() => void send()}>Send</button>
+        </div>
       </div>
       <p className="muted small">Cmd+Enter (Ctrl+Enter on Windows) sends. Answers come from your saved material; check anything you will submit.</p>
     </section>

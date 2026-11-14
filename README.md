@@ -35,6 +35,9 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | Canvas course list (Courses → All Courses) pasted into setup: codes, names, sections and term | ✅ Available |
 | Course home with Unit 1 to 7 blocks (state, graded count, points, next due) that open that unit's modules | ✅ Available |
 | Chat tab (violet, in the bottom dock): paste anything copied from Canvas and it is sorted into the right course without duplicates; ask about an assignment with your own saved material; works with Ollama, OpenAI or Claude | ✅ Available |
+| Syllabus structure: sections grouped into overview, grading, books and readings, units and assignments, and rules (table rows, page numbers and wrapped lines no longer become sections); "Organize with AI" adds a summary, key facts and easy to miss rules | ✅ Available |
+| Different free model per job: everyday, assignment, image (screenshots, run locally) and search (finds the right passages); every chat reply names the model that wrote it; chat asks whether a paste is about an assignment when unsure | ✅ Available |
+| Attach PDFs, Word files and screenshots in Chat; first run walkthrough and dismissible tips on every page | ✅ Available |
 | Word documents from Chat: "Write this assignment as a document" or download any answer as a .docx in APA 7 layout (Times New Roman 12, double spaced, page number, optional title page, hanging indent references); saved to your Downloads folder | ✅ Available |
 | Real source lookup in Chat: search Crossref and OpenAlex or check a DOI, get an APA 7 reference and in text citation, save it with the assignment; the chat cites only saved sources | ✅ Available |
 | Assignment Brief tab: what is required, scoring, resources to read (from the syllabus and your imports) and key dates | ✅ Available |

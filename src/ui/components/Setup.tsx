@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Hint } from './Guide';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ConfirmedRecord } from '../../core/types';
@@ -94,6 +95,7 @@ export function Setup() {
       <div className="page-head">
         <span className="chip">set up</span>
         <h1 id="setup-title">Your semester</h1>
+        <Hint id="setup" />
         <p>Three short steps, plus an optional calendar feed. Everything is saved on this computer, and you can change it later.</p>
       </div>
 

@@ -8,6 +8,8 @@ vi.mock('../src/ui/aiClient', () => ({
   completeAi: async () => '# Leadership and Trust\n\nMy first paragraph.\n\n# References\nRivera, M. (2021). Example.',
   hasSecret: async () => false,
   setSecret: async () => undefined,
+  embedAi: async (_m: string, _u: string, t: string[]) => t.map(() => [1, 0]),
+  describeImage: async () => 'Week 1 Reading due Friday, 20 points',
 }));
 const saved: { name: string; size: number }[] = [];
 vi.mock('../src/ui/exporter', () => ({ saveDocx: async (name: string, bytes: Uint8Array) => { saved.push({ name, size: bytes.length }); return `Downloads/${name}`; } }));
@@ -95,5 +97,29 @@ describe('unit blocks and chat', () => {
     expect(await screen.findByText(/Saved Word document/)).toBeInTheDocument();
     expect(saved[0].name).toBe('Leadership and Trust.docx');
     expect(saved[0].size).toBeGreaterThan(500);
+  });
+
+  it('names the model, uses the assignment model for assignment work and asks when unsure', async () => {
+    const service = await setup();
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false, writingModel: 'qwen3:8b', visionModel: '', embedModel: '' });
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
+    fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
+    expect(await screen.findByText(/Everyday: Qwen3 4B · Assignments: Qwen3 8B/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello, how is everyone today' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/Qwen3 4B · everyday model/)).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText('Message'), { target: { value: 'Write the Week 2 reflection paper in APA, 500 words, due Saturday, 50 points' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/Qwen3 8B · assignment model/)).toBeInTheDocument();
+
+    const long = `Reminder about the paper.\n${'Please keep reading the course material carefully and ask questions in the forum. '.repeat(8)}`;
+    fireEvent.change(await screen.findByLabelText('Message'), { target: { value: long } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/Is this about an assignment, or something else/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Something else' }));
+    await screen.findAllByText(/Qwen3 4B · everyday model|saved|already|nothing new|No new|added|found/i, undefined, { timeout: 4000 });
+    expect(screen.queryByText(/Is this about an assignment, or something else/)).not.toBeInTheDocument();
   });
 });

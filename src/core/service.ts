@@ -23,6 +23,9 @@ import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts }
 import { buildBrief, briefToText, type Brief } from './brief';
 import { prettyDate, milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
 import { summariseUnits, type UnitSummary } from './units';
+import { parseOverview, syllabusPrompt } from './ai';
+import { chunkText, retrieve } from './retrieve';
+import { modelFor } from './models';
 import { apaText, inText, type Work } from './scholar';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
 import { sourceKind, sourcesForCourse } from './courseContent';
@@ -78,6 +81,8 @@ const DEFAULT_NEXT: NextSemesterSettings = {
   subjectsConfirmed: false, subjects: [], skipping: false, remindersEnabled: true,
   snoozedUntil: null, lastPromptedOn: null, forSemesterId: null,
 };
+
+export type RawEmbed = (model: string, baseUrl: string, texts: string[]) => Promise<number[][]>;
 
 export class AcademicService {
   constructor(private readonly repo: Repository) {}
@@ -163,6 +168,26 @@ export class AcademicService {
       fields: {
         kind: 'announcement', title: `About “${title}”`, courseCode: code, sourceId,
         summary: b.summary, actions: b.actions.map((a) => JSON.stringify(a)), cautions: b.cautions, assignmentKeys: b.assignmentKeys,
+        provider: settings.provider, model: settings.model, createdAt: now,
+      },
+      unknownFields: [],
+      evidence: [this.aiProvenance(sourceId, source.originalName, settings, now)],
+    }, now);
+  }
+
+  /** Read a syllabus with AI: a short summary, the key facts, and the rules that are easy to miss. */
+  async organizeSyllabus(sourceId: string, complete: Completer, now = new Date().toISOString()) {
+    const source = (await this.repo.listSources()).find((x) => x.id === sourceId);
+    if (!source) throw new Error('That syllabus no longer exists.');
+    const code = source.hints.course ?? '';
+    const { text, settings } = await this.runAi(complete, syllabusPrompt(source.text, code));
+    const o = parseOverview(text);
+    return this.repo.saveGenerated({
+      entityType: 'ai_note',
+      key: `${code}|ai|syllabus|${sourceId}`,
+      fields: {
+        kind: 'syllabus', title: 'Syllabus at a glance', courseCode: code, sourceId,
+        summary: o.summary, actions: o.facts.map((f) => JSON.stringify({ text: `${f.label}: ${f.value}`, due: null, assignmentKey: null })), cautions: o.cautions, assignmentKeys: [],
         provider: settings.provider, model: settings.model, createdAt: now,
       },
       unknownFields: [],
@@ -580,8 +605,11 @@ export class AcademicService {
   }
 
   /** Sort pasted material into its course, once, and say what happened. */
-  async chatIntake(code: string, text: string): Promise<{ reply: string; proposalIds: string[]; announcementIds: string[] }> {
-    const r = await this.importForCourse(code, [{ kind: 'text', text, label: `Chat paste (${code})` }]);
+  async chatIntake(code: string, given: { text?: string; files?: { name: string; bytes: Uint8Array }[] }): Promise<{ reply: string; proposalIds: string[]; announcementIds: string[] }> {
+    const inputs: ImportInput[] = [];
+    if (given.text?.trim()) inputs.push({ kind: 'text', text: given.text, label: `Chat paste (${code})` });
+    for (const f of given.files ?? []) inputs.push({ kind: 'file', name: f.name, bytes: f.bytes });
+    const r = await this.importForCourse(code, inputs);
     const reply = describeIntake(r, code, r.skippedDuplicates);
     const announcementIds = r.sources
       .filter((s) => sourceKind({ ...s.source, classifications: s.classifications }) === 'announcement')
@@ -589,7 +617,19 @@ export class AcademicService {
     return { reply, proposalIds: r.proposals.map((p) => p.id), announcementIds };
   }
 
-  async chatSystemFor(code: string | null, assignmentId: string | null, today: string): Promise<string> {
+  /** Passages of this course's saved material that match a question. */
+  async passagesFor(code: string | null, query: string, settings: AiSettings, embed?: RawEmbed): Promise<{ text: string; how: 'meaning' | 'keywords' }[]> {
+    if (!code) return [];
+    const records = await this.repo.listRecords();
+    const sources = sourcesForCourse(code, await this.repo.listSources(), records);
+    const chunks = sources.flatMap((x) => chunkText(x.text, x.originalName));
+    const tag = modelFor(settings, 'embed');
+    const embedder = embed && tag ? (texts: string[]) => embed(tag, settings.ollamaUrl, texts) : undefined;
+    const found = await retrieve(query, chunks, 5, embedder, tag);
+    return found.map((f) => ({ text: `[${f.chunk.source}]\n${f.chunk.text}`, how: f.how }));
+  }
+
+  async chatSystemFor(code: string | null, assignmentId: string | null, today: string, passages: string[] = []): Promise<string> {
     const records = await this.repo.listRecords();
     const course = code ? records.find((r) => r.entityType === 'course' && r.fields.code === code) : null;
     const { facts } = code ? await this.syllabusFor(code) : { facts: null };
@@ -608,12 +648,12 @@ export class AcademicService {
     }
     return chatSystem({
       courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
-      grading, upcoming, focus, references, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
+      grading, upcoming, focus, references, passages, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
     }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
   }
 
   /** One chat turn: the student's message in, the assistant's reply out. */
-  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string): Promise<string> {
+  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string, opts: { task?: 'assignment' | 'general'; embed?: RawEmbed } = {}): Promise<{ text: string; model: string; task: 'assignment' | 'general'; search: 'meaning' | 'keywords' | 'none' }> {
     const s = await this.aiSettings();
     if (!aiReady(s)) {
       throw new Error(isCloud(s.provider) && !s.cloudConsent
@@ -621,7 +661,11 @@ export class AcademicService {
         : 'Turn on the AI assistant in Semester setup first, then I can answer here.');
     }
     const history = (await this.chatHistory(key)).filter((m) => m.kind !== 'intake').slice(-12).map((m) => ({ role: m.role, content: m.content }));
-    const system = await this.chatSystemFor(code, assignmentId, today);
-    return complete({ provider: s.provider, model: s.model, system, prompt: text, history, json: false, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
+    const task = opts.task ?? (assignmentId ? 'assignment' : 'general');
+    const model = modelFor(s, task === 'assignment' ? 'writing' : 'chat');
+    const found = await this.passagesFor(code, text, s, s.provider === 'ollama' ? opts.embed : undefined);
+    const system = await this.chatSystemFor(code, assignmentId, today, found.map((f) => f.text));
+    const reply = await complete({ provider: s.provider, model, system, prompt: text, history, json: false, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
+    return { text: reply, model, task, search: found[0]?.how ?? 'none' };
   }
 }

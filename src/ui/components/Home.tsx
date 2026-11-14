@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Hint } from './Guide';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import { addDays } from '../../core/extract/dates';
@@ -57,6 +58,7 @@ export function Home() {
       <section className="hero" aria-labelledby="home-title">
         <span className="chip">{semester ? semester.toLowerCase() : 'welcome'}</span>
         <h1 id="home-title" className="display">Your semester</h1>
+        <Hint id="home" />
         <p className="lede">Every deadline from your courses in one place, taken from your own course pages and confirmed by you.</p>
         {courses.length === 0 ? (
           <button type="button" className="link lede-link" onClick={() => go({ name: 'setup' })}>set up your semester →</button>

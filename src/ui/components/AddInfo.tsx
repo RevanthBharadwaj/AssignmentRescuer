@@ -1,4 +1,5 @@
 import { useRef, useState, type DragEvent, type ClipboardEvent } from 'react';
+import { Hint } from './Guide';
 import { useApp } from '../AppContext';
 import type { ImportInput, ImportResult } from '../../core/pipeline';
 import type { ContentLabel, EntityType, FieldValue, ImportHints } from '../../core/types';
@@ -99,6 +100,7 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
       <div className="page-head">
         <span className="chip">capture it</span>
         <h1 id="add-title">Add Academic Information</h1>
+        <Hint id="add" />
         <p>Paste text, drop files, or type details yourself. Nothing is saved until you review it.</p>
       </div>
 

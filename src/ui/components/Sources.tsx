@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Hint } from './Guide';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import { FEATURES, type FeatureStatus } from '../../core/features';
@@ -15,6 +16,7 @@ export function Sources() {
       <div className="page-head">
         <span className="chip">trace it</span>
         <h1 id="sources-title">Imported material</h1>
+        <Hint id="sources" />
         <p>Everything stays on this computer. Deleting a source also removes records that came only from it.</p>
       </div>
       {sources.length === 0 && <p className="muted">Nothing imported yet.</p>}

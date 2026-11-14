@@ -1,4 +1,5 @@
 import { useApp } from '../AppContext';
+import { Hint } from './Guide';
 import { useAsync } from '../useAsync';
 import { ReviewList } from './ReviewList';
 
@@ -12,6 +13,7 @@ export function Review() {
       <div className="page-head">
         <span className="chip">confirm it</span>
         <h1 id="review-title">Review extracted information</h1>
+        <Hint id="review" />
         <p>{proposals.length === 0 ? 'Everything is confirmed.' : `${proposals.length} item${proposals.length === 1 ? '' : 's'} waiting across all courses. Changes and disagreements always need your decision.`}</p>
       </div>
       <ReviewList proposals={proposals} />

@@ -5,9 +5,11 @@ import type { AcademicDate, ChangeProposal, ConfirmedRecord } from '../../core/t
 import type { ImportInput, ImportResult } from '../../core/pipeline';
 import { analyseAssignment } from '../../core/assignments/checklist';
 import {
-  MATERIAL_KINDS, MATERIAL_LABELS, buildAssignmentContext, policySections, sourceKind, sourcesForCourse, splitSections, toAnnouncement,
+  MATERIAL_KINDS, MATERIAL_LABELS, buildAssignmentContext, policySections, sourceKind, sourcesForCourse, toAnnouncement,
   type CourseSource, type MaterialKind, type PolicyTopic,
 } from '../../core/courseContent';
+import { Hint } from './Guide';
+import { structureSyllabus } from '../../core/syllabusStructure';
 import { FIELD_LABELS, errorMessage, formatDate, formatValue } from '../format';
 import { SourceTrace } from './SourceTrace';
 import { ReviewList } from './ReviewList';
@@ -16,7 +18,7 @@ import { readFileBytes } from './AddInfo';
 import { Breadcrumbs } from './Breadcrumbs';
 import { UnitBlocks } from './UnitBlocks';
 import { BriefView } from './BriefView';
-import { AiButton, AiNote, runAnnouncement, runAssignment } from './AiPanel';
+import { AiButton, AiNote, runAnnouncement, runAssignment, runSyllabus } from './AiPanel';
 import { aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
 import { CourseDot, ProgressBar, StatusButton, Urgency, courseColor, courseProgress, statusOf } from '../ux';
@@ -49,6 +51,7 @@ export function CourseList() {
       <div className="page-head">
         <span className="chip">plan it</span>
         <h1 id="courses-title">Courses</h1>
+        <Hint id="courses" />
         <p>Each course works like it does in Canvas: announcements, syllabus, modules, assignments and policies in their own places.</p>
       </div>
       {courses.length === 0 ? (
@@ -181,6 +184,7 @@ function PageHead({ d, title, sub }: { d: CourseData; title: string; sub?: React
       <span className="chip course-chip">{d.code.toLowerCase()} · {String(d.course?.fields.name ?? '')}</span>
       <h1 id="course-title">{title}</h1>
       {sub ? <p className="muted">{sub}</p> : null}
+      <Hint id={title.toLowerCase()} />
     </div>
   );
 }
@@ -353,24 +357,44 @@ function Announcements({ d }: { d: CourseData }) {
 /* ================= syllabus ================= */
 
 function Syllabus({ d }: { d: CourseData }) {
+  const { service, version } = useApp();
+  const { data: notes } = useAsync(() => service.repository.listRecords('ai_note'), [version]);
   const syllabi = d.sources.filter((s) => sourceKind(s) === 'syllabus');
   return (
     <>
       <PageHead d={d} title="Syllabus" sub="Section by section. Policy sections are marked; they also feed each assignment's context." />
       {syllabi.length === 0 ? <Empty d={d} kind="syllabus" text="No syllabus yet. Paste it or drop the PDF or Word file." /> : syllabi.map((s) => {
-        const policyHeads = new Set(policySections(s).map((p) => p.heading));
+        const { groups } = structureSyllabus(s.text);
         return (
           <div key={s.id} className="syllabus">
             <p className="muted small">From {s.originalName}</p>
-            {splitSections(s.text).map((sec, i) => (
-              <details key={`${sec.heading}-${i}`} className={`card section stagger ${policyHeads.has(sec.heading) ? 'is-policy' : ''}`} style={{ ['--i' as string]: i }} open={i < 2 || policyHeads.has(sec.heading)}>
-                <summary>
-                  <span>{sec.heading}</span>
-                  {policyHeads.has(sec.heading) && <span className="kind-badge k-policy">policy</span>}
-                  {sec.topics.slice(0, 3).map((t) => <span key={t} className="tag">{TOPIC_LABEL[t]}</span>)}
-                </summary>
-                {sec.body && <p className="pre">{sec.body}</p>}
-              </details>
+            {(() => {
+              const note = notes?.find((n) => n.fields.sourceId === s.id && n.fields.kind === 'syllabus');
+              return (
+                <div className="card compact">
+                  {note ? <AiNote note={note} /> : <p className="muted small">Let the AI read this syllabus and list the key facts and the rules that are easy to miss.</p>}
+                  <AiButton label={note ? 'Organize again' : 'Organize with AI'} run={() => runSyllabus(service, s.id)} />
+                </div>
+              );
+            })()}
+            <nav className="syllabus-jump" aria-label="Syllabus groups">
+              {groups.map((g) => <a key={g.id} href={`#syl-${s.id}-${g.id}`}>{g.label} <span className="muted">{g.sections.length}</span></a>)}
+            </nav>
+            {groups.map((g, gi) => (
+              <section key={g.id} id={`syl-${s.id}-${g.id}`} className="syllabus-group">
+                <h2>{g.label}</h2>
+                <p className="muted small">{g.hint}</p>
+                {g.sections.map((sec, i) => (
+                  <details key={`${sec.heading}-${i}`} className={`card section stagger ${sec.policy ? 'is-policy' : ''}`} style={{ ['--i' as string]: gi + i }} open={g.id === 'overview' || g.id === 'grading' || sec.policy}>
+                    <summary>
+                      <span>{sec.heading}</span>
+                      {sec.policy && <span className="kind-badge k-policy">policy</span>}
+                      {sec.topics.slice(0, 3).map((t) => <span key={t} className="tag">{TOPIC_LABEL[t]}</span>)}
+                    </summary>
+                    {sec.body && <p className="pre">{sec.body}</p>}
+                  </details>
+                ))}
+              </section>
             ))}
           </div>
         );
