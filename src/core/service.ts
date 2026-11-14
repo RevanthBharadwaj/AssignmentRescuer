@@ -390,8 +390,30 @@ export class AcademicService {
     return saved;
   }
 
-  async removeCourse(id: string) {
+  /**
+   * Removes a course and everything that belongs to it: its assignments, events and announcements,
+   * waiting suggestions, imported material used only by this course, and its saved chat.
+   * Nothing is left behind to show up on Home, the calendar or in Chat.
+   * Returns how many saved items went with it.
+   */
+  async removeCourse(id: string): Promise<number> {
+    const records = await this.repo.listRecords();
+    const course = records.find((r) => r.id === id);
+    if (!course) return 0;
+    const code = String(course.fields.code ?? course.key);
+    const owned = records.filter((r) => r.id !== id && r.fields.courseCode === code);
+    for (const p of await this.repo.listProposals('pending')) {
+      if (p.candidate.fields.courseCode === code || p.key === code || p.candidate.provenance.importedInto === code) await this.repo.rejectProposal(p.id);
+    }
+    const others = records.filter((r) => r.entityType !== 'course' && r.fields.courseCode !== code);
+    const usedElsewhere = new Set(others.flatMap((r) => r.evidence.map((e) => e.sourceId)));
+    for (const src of sourcesForCourse(code, await this.repo.listSources(), records)) {
+      if (!usedElsewhere.has(src.id)) await this.repo.deleteSource(src.id, true);
+    }
+    for (const r of owned) await this.repo.deleteRecord(r.id).catch(() => undefined);
     await this.repo.deleteRecord(id);
+    await this.clearChat(code);
+    return owned.length;
   }
 
   /** Import material for one course: the course and semester are known, so nothing needs classifying by hand. */

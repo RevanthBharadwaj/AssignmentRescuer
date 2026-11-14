@@ -30,7 +30,12 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 18: empty Courses page fix, due date order, course names (latest)**
+**Update 19: removing a course removes it everywhere (latest)**
+
+1. Remove (Setup list, and a new Remove course link on each Courses card, with a confirmation) now deletes the course's assignments, events, announcements, waiting suggestions, imported material used only by that course, and its saved chat. Before, only the course entry went, and update 18 then recreated it from the leftover items.
+2. 203 Vitest tests pass.
+
+**Update 18: empty Courses page fix, due date order, course names**
 
 1. Any course code found on a saved assignment or event now gets its own course automatically, so the Courses page is not empty while Home shows work for those courses.
 2. Reminders for today are sorted by due date, then time, then title, not by unit number.

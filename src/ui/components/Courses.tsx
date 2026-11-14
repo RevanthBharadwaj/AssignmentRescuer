@@ -38,7 +38,8 @@ const TOPIC_LABEL: Record<PolicyTopic, string> = {
 /* ================= course list ================= */
 
 export function CourseList() {
-  const { service, version, go, today } = useApp();
+  const { service, version, go, today, refresh, toast } = useApp();
+  const [removing, setRemoving] = useState<string | null>(null);
   const { data } = useAsync(async () => ({
     records: await service.repository.listRecords(),
     pending: await service.repository.listProposals('pending'),
@@ -68,7 +69,8 @@ export function CourseList() {
             const waiting = data.pending.filter((p) => p.candidate.fields.courseCode === code || p.candidate.provenance.importedInto === code).length;
             const prog = courseProgress(items);
             return (
-              <button key={c.id} type="button" className="course-card stagger" style={{ ['--c' as string]: courseColor(code), ['--i' as string]: i }} onClick={() => go({ name: 'course', code })} aria-label={`Open ${code}`}>
+              <div key={c.id} className="course-slot">
+              <button type="button" className="course-card stagger" style={{ ['--c' as string]: courseColor(code), ['--i' as string]: i }} onClick={() => go({ name: 'course', code })} aria-label={`Open ${code}`}>
                 <span className="code">{code}</span>
                 <span className="name">{String(c.fields.name ?? 'Name not set')}</span>
                 {c.fields.instructor ? <span className="meta">{String(c.fields.instructor)}</span> : null}
@@ -76,6 +78,16 @@ export function CourseList() {
                 <span className="next">{next ? <>next: {String(next.fields.title)} · {formatDate(dateOf(next))}</> : items.length ? 'nothing upcoming' : 'add material to fill this course'}</span>
                 {prog.total > 0 && <><ProgressBar pct={prog.pct} color={courseColor(code)} label={`${code} progress`} /><span className="meta">{prog.pct}% of points submitted</span></>}
               </button>
+              {removing === code ? (
+                <p className="remove-ask small" role="alert">
+                  Remove {code} and its {items.length} saved item{items.length === 1 ? '' : 's'}, waiting suggestions and imported material? This cannot be undone.{' '}
+                  <button type="button" className="link" onClick={async () => { await service.removeCourse(c.id); setRemoving(null); refresh(); toast(`${code} removed everywhere`); }}>Remove</button>{' '}
+                  <button type="button" className="link muted-link" onClick={() => setRemoving(null)}>Keep</button>
+                </p>
+              ) : (
+                <button type="button" className="link muted-link small remove-course" aria-label={`Remove ${code}`} onClick={() => setRemoving(code)}>Remove course</button>
+              )}
+              </div>
             );
           })}
           <button type="button" className="course-card add" onClick={() => go({ name: 'setup' })}>

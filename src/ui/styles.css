@@ -852,3 +852,7 @@ main:has(.chat) { max-width: none; padding: 14px 24px calc(var(--dock-h) + 14px)
   .chat-threads { display: none; }
   .chat-course-select { display: flex; }
 }
+
+.course-slot { display: flex; flex-direction: column; gap: 6px; }
+.course-slot .course-card { flex: 1; }
+.remove-ask { margin: 0; color: var(--ink-soft); }
