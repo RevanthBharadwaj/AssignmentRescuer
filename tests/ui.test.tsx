@@ -265,9 +265,10 @@ describe('desktop UI', () => {
     await approveAll(service);
 
     fireEvent.click(top('Semester setup'));
-    fireEvent.click(await screen.findByRole('radio', { name: /Claude \(Anthropic API\)/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Claude \(Anthropic API\)/ }));
     expect(screen.getByRole('button', { name: 'Save AI settings' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('radio', { name: /Free local model/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Claude \(Anthropic API\)/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Free local model/ }));
     expect(screen.getByRole('radio', { name: 'Qwen3 4B' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'About Qwen3 8B' })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Set up' })[0]);

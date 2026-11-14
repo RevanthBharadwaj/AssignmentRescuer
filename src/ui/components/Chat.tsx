@@ -75,6 +75,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
     courses: (await service.repository.listRecords('course')).map((c) => ({ code: String(c.fields.code), name: String(c.fields.name ?? '') })),
     assignments: await service.repository.listRecords('assignment'),
     ai: await service.aiSettings(),
+    route: await service.routeSummary(),
   }), [version]);
 
   const [code, setCode] = useState<string>(startCode ?? '');
@@ -124,16 +125,16 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const msg = (m: Omit<ChatMessage, 'id' | 'at'>): ChatMessage => ({ id: uid(), at: new Date().toISOString(), ...m });
 
   const titles = base.assignments.map((r) => String(r.fields.title));
-  const roleName = (t: 'assignment' | 'general') => (t === 'assignment' ? 'assignment model' : 'everyday model');
+  const roleName = (t: 'assignment' | 'general', provider?: string) => `${t === 'assignment' ? 'assignment analysis' : 'everyday chat'}${provider === 'ollama' ? ' (free, on this computer)' : ''}`;
 
   /** One model written answer, with the model named while it works and on the reply. */
   const answer = async (list: ChatMessage[], prompt: string, task: 'assignment' | 'general', used: ToolResult[] = []) => {
-    const tag = modelFor(base.ai, task === 'assignment' ? 'writing' : 'chat');
-    setBusy(`${task === 'assignment' ? 'Working on your assignment' : 'Thinking'} with ${modelLabel(tag)}`);
+    const picked = await service.pickFor(task === 'assignment' ? 'assignment' : 'chat');
+    setBusy(`${task === 'assignment' ? 'Working on your assignment' : 'Thinking'} with ${modelLabel(picked.model)}`);
     const r = await service.chatReply(key, code || null, assignmentId || null, prompt, completeAi, today, { task, embed: embedAi, tools: used });
     const shown = [...used.map((t) => ({ id: t.id, label: t.label, note: t.note })), ...(r.passages ? [{ id: 'search_material', label: toolInfo('search_material').label, note: `${r.passages} passage${r.passages === 1 ? '' : 's'}, by ${r.search === 'meaning' ? 'meaning' : 'keywords'}` }] : [])];
     const works = used.flatMap((t) => t.works ?? []);
-    const next = [...list, msg({ role: 'assistant', content: r.text.trim(), model: r.model, task: r.task, tools: shown.length ? shown : undefined, works: works.length ? works : undefined })];
+    const next = [...list, msg({ role: 'assistant', content: r.text.trim(), model: r.model, provider: r.provider, task: r.task, tools: shown.length ? shown : undefined, works: works.length ? works : undefined })];
     await push(next);
     return next;
   };
@@ -148,11 +149,11 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
     refresh();
     if (r.announcementIds.length && ready) {
       for (const id of r.announcementIds) {
-        setBusy(`Reading the announcement with ${modelLabel(modelFor(base.ai, 'chat'))}`);
+        setBusy(`Reading the announcement with ${modelLabel((await service.pickFor('read')).model)}`);
         const note = await service.analyzeAnnouncement(id, completeAi);
         const actions = (Array.isArray(note.fields.actions) ? note.fields.actions : []).map((a) => { try { return (JSON.parse(String(a)) as { text: string; due: string | null }); } catch { return { text: String(a), due: null }; } });
         const body = [String(note.fields.summary), actions.length ? `\nWhat to do:\n${actions.map((a) => `• ${a.text}${a.due ? ` (${a.due})` : ''}`).join('\n')}` : '', (note.fields.cautions as string[] | undefined)?.length ? `\nEasy to miss:\n${(note.fields.cautions as string[]).map((c) => `• ${c}`).join('\n')}` : ''].join('\n').trim();
-        list = [...list, msg({ role: 'assistant', content: body, noteId: note.id, model: modelFor(base.ai, 'chat'), task: 'general' })];
+        list = [...list, msg({ role: 'assistant', content: body, noteId: note.id, model: (await service.pickFor('read')).model, task: 'general' })];
         await push(list);
       }
       refresh();
@@ -164,6 +165,37 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
       list = await answer(list, 'I just added assignment material. In three or four short lines: what is required, how it is scored, and what I should read or do first?', 'assignment');
     }
     return list;
+  };
+
+  const words = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`);
+
+  /** Run the tools a question needs, then answer. Assignment analysis waits for the full context unless the student says to go ahead. */
+  const respond = async (list: ChatMessage[], input: string, task: 'assignment' | 'general', override: boolean, anyway: boolean) => {
+    if (task === 'assignment' && !override && !anyway) {
+      const c = await service.assignmentContext(code || null, assignmentId || null, false);
+      if (c.blocking) {
+        list = [...list, msg({ role: 'assistant', kind: 'ask', ask: 'context', pending: input, content: `Before I analyze this with Claude I want the full picture. I have ${c.have.length ? words(c.have) : 'nothing saved for it yet'}, and I am missing ${words(c.missing)}. Add them for a better answer, or ask anyway.` })];
+        await push(list);
+        return;
+      }
+    }
+    const used: ToolResult[] = [];
+    if (!override) {
+      for (const call of pickTools(input, focus ? String(focus.fields.title) : null)) {
+        setBusy(`Using ${toolInfo(call.id).label}…`);
+        try { used.push(await service.runTool(call, { code: code || null, today, fetcher: scholarGet })); }
+        catch (e) { used.push({ id: call.id, label: toolInfo(call.id).label, note: 'Could not run', text: `The ${toolInfo(call.id).label} tool failed: ${errorMessage(e)}. Tell the student it did not work and what to try.` }); }
+      }
+    }
+    await answer(list, input, task, used);
+  };
+
+  const askAnyway = async (m: ChatMessage) => {
+    if (busy !== null || !m.pending) return;
+    setError(null);
+    try { await respond(messages.filter((x) => x.id !== m.id), m.pending, 'assignment', false, true); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(null); }
   };
 
   const send = async (override?: { prompt: string; shown: string }, decided?: { text: string; task?: 'assignment' | 'general'; termOk?: boolean }) => {
@@ -201,15 +233,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         await intake(list, target, { text: input }, intent);
       } else {
         const task = override ? 'assignment' : assignmentId ? 'assignment' : guessIntent(input, titles) === 'assignment' ? 'assignment' : 'general';
-        const used: ToolResult[] = [];
-        if (!override) {
-          for (const call of pickTools(input, focus ? String(focus.fields.title) : null)) {
-            setBusy(`Using ${toolInfo(call.id).label}…`);
-            try { used.push(await service.runTool(call, { code: code || null, today, fetcher: scholarGet })); }
-            catch (e) { used.push({ id: call.id, label: toolInfo(call.id).label, note: 'Could not run', text: `The ${toolInfo(call.id).label} tool failed: ${errorMessage(e)}. Tell the student it did not work and what to try.` }); }
-          }
-        }
-        await answer(list, input, task as 'assignment' | 'general', used);
+        await respond(list, input, task as 'assignment' | 'general', !!override, false);
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -281,7 +305,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
           <h1 id="chat-title">{code ? `Chat · ${code}` : 'Chat'}</h1>
         </div>
         <span className={`chat-ai ${ready ? 'on' : 'off'}`}>
-          {ready ? `Everyday: ${modelLabel(modelFor(base.ai, 'chat'))} · Assignments: ${modelLabel(modelFor(base.ai, 'writing'))}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
+          {ready ? `Everyday: ${base.route.chat ?? 'not set up'} · Assignments: ${base.route.assignment ?? 'needs Claude'}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
         </span>
       </header>
 
@@ -329,13 +353,19 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
                 <button type="button" className="secondary" disabled={busy !== null} onClick={async () => { await push([...messages.filter((x) => x.id !== m.id), msg({ role: 'assistant', content: 'Okay, I did not save it. If your semester changed, update it in Semester setup first.' })]); }}>No, it is another semester</button>
               </div>
             )}
-            {m.kind === 'ask' && m.pending && m.ask !== 'term' && (
+            {m.kind === 'ask' && m.pending && m.ask === 'context' && (
+              <div className="bubble-actions">
+                <button type="button" disabled={busy !== null} onClick={() => void askAnyway(m)}>Ask anyway</button>
+                <button type="button" className="secondary" onClick={() => { const c = code || String(focus?.fields.courseCode ?? ''); if (c) go({ name: 'course', code: c, tab: 'add' }); else toast('Choose a course first'); }}>Add material</button>
+              </div>
+            )}
+            {m.kind === 'ask' && m.pending && m.ask === 'assignment' && (
               <div className="bubble-actions">
                 <button type="button" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'assignment', termOk: true })}>It is about an assignment</button>
                 <button type="button" className="secondary" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'general', termOk: true })}>Something else</button>
               </div>
             )}
-            {m.role === 'assistant' && m.model && <div className="model-caption muted small">{modelLabel(m.model)} · {roleName(m.task ?? 'general')}</div>}
+            {m.role === 'assistant' && m.model && <div className="model-caption muted small">{modelLabel(m.model)} · {roleName(m.task ?? 'general', m.provider)}</div>}
             {m.tools && m.tools.length > 0 && <div className="tool-used muted small">{m.tools.map((t) => <span key={t.id} className="tool-chip" title={toolInfo(t.id as never).what}>{t.label}: {t.note}</span>)}</div>}
             {m.works && m.works.length > 0 && <FoundSources works={m.works} assignmentId={assignmentId} />}
             {m.kind === 'intake' && m.proposalIds && m.proposalIds.length > 0 && <ProposalCard ids={m.proposalIds} />}

@@ -19,7 +19,9 @@ export interface ChatMessage extends ChatTurn {
   proposalIds?: string[];
   kind?: 'intake' | 'ask';
   /** What an 'ask' message is asking: about an assignment, or about the semester. */
-  ask?: 'assignment' | 'term';
+  ask?: 'assignment' | 'term' | 'context';
+  /** Which provider answered, for the caption under a reply. */
+  provider?: string;
   /** Which model wrote an assistant reply, and for which kind of work. */
   model?: string;
   task?: 'assignment' | 'general';

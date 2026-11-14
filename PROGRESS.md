@@ -30,7 +30,16 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 20: finished work hidden, order by time only, deadline timer (latest)**
+**Update 21: several AI providers at once, Claude for assignments, cheapest model for the rest, cost view (latest)**
+
+1. Claude, OpenAI and Ollama can all be switched on together in Semester setup, each with its own key or models, under one consent box.
+2. Analyzing an assignment always uses Claude (Sonnet 5.5 by default, Haiku 5.5 if you choose it). If Claude is off the chat says so instead of quietly using another model.
+3. Before Claude analyzes an assignment, the chat checks it has the syllabus, the course rules, announcements and the assignment brief. Missing the syllabus or the brief pauses the answer with buttons: Add material, or Ask anyway.
+4. Everything else is chosen automatically: the cheapest model that is good enough for the job, free local models first, then Claude Haiku 5.5 (cheaper than gpt-4o-mini), then OpenAI. A switch (I choose) lets you pick the model per job.
+5. This month view: estimated cost per provider from the size of what was sent and received at published prices (Haiku 5.5 $0.10 in and $0.50 out per million tokens, Sonnet 5.5 $2 and $10, gpt-4o-mini $0.15 and $0.60, gpt-4.1-mini $0.40 and $1.60, gpt-4o $2.50 and $10). Optional monthly limit per paid provider; once reached, a free local model answers instead. Estimates only; the provider's own page has the real bill.
+6. 223 Vitest tests pass. Not tried against real keys, a real Ollama or in a real window.
+
+**Update 20: finished work hidden, order by time only, deadline timer**
 
 1. Finished work is hidden: submitted items on Home and in reminders, and whole units (Course home blocks and the Modules tab) once all their graded work is submitted or past its due date. "Show finished" switches bring them back. Dates decide, never a title or unit number.
 2. Everything that lists work is ordered by due date, then time of day, then the order it was imported. Discussion 3 due Nov 5 comes before Discussion 2 due Nov 13.

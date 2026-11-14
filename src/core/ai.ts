@@ -11,6 +11,20 @@ import { normaliseKey } from './util';
  */
 
 export type AiProvider = 'none' | 'ollama' | 'anthropic' | 'openai';
+/** A provider the app can actually call. Several can be on at once. */
+export type Provider = Exclude<AiProvider, 'none'>;
+/** The kinds of work the app does with AI, each of which can use a different model. */
+export type AiJob = 'assignment' | 'chat' | 'read' | 'review';
+
+export interface AiRouting {
+  /** auto: the cheapest model that is good enough for each job. manual: the model you chose for each job. */
+  mode: 'auto' | 'manual';
+  manual: Partial<Record<AiJob, { provider: Provider; model: string }>>;
+  /** The Claude model used to analyze assignments. */
+  assignmentModel: string;
+  /** Monthly limit in US dollars per paid provider; null means no limit. */
+  limits: { anthropic: number | null; openai: number | null };
+}
 
 export interface AiSettings {
   provider: AiProvider;
@@ -22,7 +36,12 @@ export interface AiSettings {
   writingModel?: string;
   visionModel?: string;
   embedModel?: string;
+  /** Which providers are switched on. More than one can be on. Missing means: only the one in `provider`. */
+  enabled?: { ollama: boolean; anthropic: boolean; openai: boolean };
+  routing?: AiRouting;
 }
+
+export const DEFAULT_ROUTING: AiRouting = { mode: 'auto', manual: {}, assignmentModel: 'claude-sonnet-5-5', limits: { anthropic: null, openai: null } };
 
 export const DEFAULT_AI: AiSettings = { provider: 'none', model: '', ollamaUrl: 'http://localhost:11434', cloudConsent: false, writingModel: '', visionModel: '', embedModel: '' };
 export const ANTHROPIC_MODELS = [
@@ -57,10 +76,24 @@ export interface CompletionRequest {
 }
 export type Completer = (req: CompletionRequest) => Promise<string>;
 
+/** Fills in what older saved settings lack: which providers are on, and the routing. */
+export function normaliseAi(raw: Partial<AiSettings>): AiSettings & { enabled: NonNullable<AiSettings['enabled']>; routing: AiRouting } {
+  const s = { ...DEFAULT_AI, ...raw };
+  const enabled = s.enabled ?? { ollama: s.provider === 'ollama', anthropic: s.provider === 'anthropic', openai: s.provider === 'openai' };
+  const r = s.routing;
+  const routing: AiRouting = {
+    mode: r?.mode === 'manual' ? 'manual' : 'auto',
+    manual: r?.manual ?? {},
+    assignmentModel: r?.assignmentModel || DEFAULT_ROUTING.assignmentModel,
+    limits: { anthropic: r?.limits?.anthropic ?? null, openai: r?.limits?.openai ?? null },
+  };
+  return { ...s, enabled, routing };
+}
+
+/** Is at least one provider ready to answer? */
 export function aiReady(s: AiSettings): boolean {
-  if (s.provider === 'ollama') return !!s.model;
-  if (isCloud(s.provider)) return !!s.model && s.cloudConsent;
-  return false;
+  const n = normaliseAi(s);
+  return (n.enabled.ollama && !!n.model) || ((n.enabled.anthropic || n.enabled.openai) && n.cloudConsent);
 }
 
 export interface BriefingAction {

@@ -16,7 +16,8 @@ import {
 } from './reminders/deadlineReminders';
 import type { Resolution } from './merge/merge';
 import type { EntityType, FieldValue, Provenance } from './types';
-import { DEFAULT_AI, PROVIDER_NAME, aiReady, isCloud, announcementPrompt, assignmentPrompt, parseBriefing, type AiSettings, type Completer } from './ai';
+import { aiReady, announcementPrompt, assignmentPrompt, normaliseAi, parseBriefing, type AiJob, type AiSettings, type Completer, type Provider } from './ai';
+import { costOf, estimateTokens, infoFor, pickModel, spentThisMonth, type Pick, type Spent, type UsageEntry } from './providers';
 import { buildAssignmentContext, toAnnouncement } from './courseContent';
 import { normaliseCourseCode } from './util';
 import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
@@ -25,7 +26,7 @@ import { prettyDate, prettyTime, milestonesFor, remindersFor, dueReminders, form
 import { summariseUnits, type UnitSummary } from './units';
 import { parseOverview, syllabusPrompt } from './ai';
 import { chunkText, retrieve } from './retrieve';
-import { modelFor } from './models';
+import { modelFor, modelLabel } from './models';
 import { apaText, inText, searchWorks, verifyDoi, type Fetcher, type Work } from './scholar';
 import { termMismatch } from './term';
 import { dueRange, toolInfo, type ToolCall, type ToolId } from './tools';
@@ -131,26 +132,70 @@ export class AcademicService {
 
   /* ---------- AI ---------- */
 
-  async aiSettings(): Promise<AiSettings> {
-    return { ...DEFAULT_AI, ...(await this.repo.getSetting<Partial<AiSettings>>('ai', {})) };
+  async aiSettings(): Promise<ReturnType<typeof normaliseAi>> {
+    return normaliseAi(await this.repo.getSetting<Partial<AiSettings>>('ai', {}));
   }
 
   async saveAiSettings(s: AiSettings): Promise<void> {
-    await this.repo.setSetting('ai', s);
+    // Keep `provider` pointing at a provider that is on, for anything that still reads it.
+    const n = normaliseAi(s);
+    const provider = n.enabled.ollama ? 'ollama' : n.enabled.anthropic ? 'anthropic' : n.enabled.openai ? 'openai' : 'none';
+    await this.repo.setSetting('ai', { ...n, provider });
   }
 
-  private async runAi(complete: Completer, req: { system: string; prompt: string }): Promise<{ text: string; settings: AiSettings }> {
+  /** Every AI call made, with its estimated cost, newest last. */
+  async usageLog(): Promise<UsageEntry[]> {
+    return this.repo.getSetting<UsageEntry[]>('ai.usage', []);
+  }
+
+  async spentThisMonth(now = new Date()): Promise<Spent> {
+    return spentThisMonth(await this.usageLog(), now);
+  }
+
+  /** Which model will answer this job, given what is switched on and what has been spent. Throws a plain message when none can. */
+  async pickFor(job: AiJob, now = new Date()): Promise<Extract<Pick, { ok: true }>> {
     const s = await this.aiSettings();
     if (!aiReady(s)) {
-      throw new Error(isCloud(s.provider) && !s.cloudConsent
-        ? `Agree to send material to ${PROVIDER_NAME[s.provider]} in Semester setup → AI assistant first.`
+      const paid = [s.enabled.anthropic && 'Claude', s.enabled.openai && 'OpenAI'].filter((x): x is string => !!x);
+      throw new Error(paid.length && !s.cloudConsent
+        ? `Agree to send material to ${paid.join(' and ')} in Semester setup → AI assistant first.`
         : 'Turn on the AI assistant in Semester setup first.');
     }
-    const text = await complete({ provider: s.provider, model: s.model, system: req.system, prompt: req.prompt, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
-    return { text, settings: s };
+    const p = pickModel(job, s, await this.spentThisMonth(now));
+    if (!p.ok) throw new Error(p.message);
+    return p;
   }
 
-  private aiProvenance(sourceId: string, name: string, s: AiSettings, now: string): Provenance {
+  /** The model names to show in Chat: which one analyzes assignments and which one answers everyday questions. */
+  async routeSummary(now = new Date()): Promise<{ assignment: string | null; chat: string | null }> {
+    const s = await this.aiSettings();
+    const spent = await this.spentThisMonth(now);
+    const name = (job: AiJob) => { const p = pickModel(job, s, spent); return p.ok ? modelLabel(p.model) : null; };
+    return { assignment: name('assignment'), chat: name('chat') };
+  }
+
+  /** Pick the model for a job, call it, and record the estimated cost. */
+  async completeFor(job: AiJob, complete: Completer, req: { system: string; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[]; json?: boolean }, now = new Date()): Promise<{ text: string; pick: Extract<Pick, { ok: true }> }> {
+    const s = await this.aiSettings();
+    const pick = await this.pickFor(job, now);
+    const text = await complete({
+      provider: pick.provider, model: pick.model, system: req.system, prompt: req.prompt, history: req.history, json: req.json,
+      baseUrl: pick.provider === 'ollama' ? s.ollamaUrl : undefined,
+    });
+    const inTokens = estimateTokens(req.system) + estimateTokens(req.prompt) + (req.history ?? []).reduce((n, h) => n + estimateTokens(h.content), 0);
+    const outTokens = estimateTokens(text);
+    const usd = pick.provider === 'ollama' ? 0 : costOf(infoFor(pick.provider, pick.model), inTokens, outTokens);
+    const log = await this.usageLog();
+    await this.repo.setSetting('ai.usage', [...log, { at: now.toISOString(), provider: pick.provider, model: pick.model, job, inTokens, outTokens, usd } satisfies UsageEntry].slice(-1500));
+    return { text, pick };
+  }
+
+  private async runAi(job: AiJob, complete: Completer, req: { system: string; prompt: string }): Promise<{ text: string; settings: { provider: Provider; model: string } }> {
+    const { text, pick } = await this.completeFor(job, complete, req);
+    return { text, settings: { provider: pick.provider, model: pick.model } };
+  }
+
+  private aiProvenance(sourceId: string, name: string, s: { provider: string; model: string }, now: string): Provenance {
     return {
       sourceId, sourceType: 'pasted_text', originalName: name, importedAt: now, page: null, imageRegion: null, textLocation: null,
       excerpt: `Generated by ${s.provider === 'ollama' ? `${s.model} on this computer` : s.model}`,
@@ -164,7 +209,7 @@ export class AcademicService {
     if (!source) throw new Error('That announcement no longer exists.');
     const code = source.hints.course ?? '';
     const assignments = (await this.repo.listRecords('assignment')).filter((a) => a.fields.courseCode === code);
-    const { text, settings } = await this.runAi(complete, announcementPrompt(source.text, code, assignments));
+    const { text, settings } = await this.runAi('read', complete, announcementPrompt(source.text, code, assignments));
     const b = parseBriefing(text, assignments);
     const title = toAnnouncement(source).title;
     return this.repo.saveGenerated({
@@ -185,7 +230,7 @@ export class AcademicService {
     const source = (await this.repo.listSources()).find((x) => x.id === sourceId);
     if (!source) throw new Error('That syllabus no longer exists.');
     const code = source.hints.course ?? '';
-    const { text, settings } = await this.runAi(complete, syllabusPrompt(source.text, code));
+    const { text, settings } = await this.runAi('read', complete, syllabusPrompt(source.text, code));
     const o = parseOverview(text);
     return this.repo.saveGenerated({
       entityType: 'ai_note',
@@ -218,7 +263,7 @@ export class AcademicService {
       ctx.readings.length ? `READINGS FOR THIS UNIT:\n${ctx.readings.map((r) => `- ${r.title}`).join('\n')}` : '',
     ].filter(Boolean).join('\n\n');
     const assignments = records.filter((r) => r.entityType === 'assignment' && r.fields.courseCode === code);
-    const { text, settings } = await this.runAi(complete, assignmentPrompt(a, material, assignments));
+    const { text, settings } = await this.runAi('assignment', complete, assignmentPrompt(a, material, assignments));
     const b = parseBriefing(text, assignments);
     const keys = [...new Set([a.key, ...b.assignmentKeys])];
     return this.repo.saveGenerated({
@@ -646,7 +691,8 @@ export class AcademicService {
   async saveDraft(assignmentId: string, text: string, now = new Date().toISOString()): Promise<ConfirmedRecord> {
     const a = (await this.repo.listRecords('assignment')).find((r) => r.id === assignmentId);
     if (!a) throw new Error('That assignment no longer exists.');
-    const s = await this.aiSettings();
+    const pick = await this.repo.getSetting<{ provider: string; model: string } | null>('ai.lastReply', null);
+    const s = pick ?? { provider: 'ollama', model: '' };
     const stamp = now.replace(/\D/g, '').slice(0, 14);
     return this.repo.saveGenerated({
       entityType: 'ai_note',
@@ -766,20 +812,43 @@ export class AcademicService {
     return { id: call.id, label, note: `${works.length} found for "${call.arg}"`, works, text: `Real records found for "${call.arg}":\n${works.map((w) => `- ${apaText(w)} | In text: ${inText(w)}`).join('\n')}` };
   }
 
+  /**
+   * What the assistant has to work with before it analyzes an assignment: the syllabus, the course rules,
+   * announcements and the assignment brief. Missing the syllabus or the brief blocks the analysis until
+   * the student adds it or chooses to ask anyway.
+   */
+  async assignmentContext(code: string | null, assignmentId: string | null, pastedBrief = false): Promise<{ have: string[]; missing: string[]; blocking: boolean }> {
+    const records = await this.repo.listRecords();
+    const sources = await this.repo.listSources();
+    const a = assignmentId ? records.find((r) => r.id === assignmentId) ?? null : null;
+    const course = code ?? (a ? String(a.fields.courseCode ?? '') : '');
+    const mine = course ? sourcesForCourse(course, sources, records) : [];
+    const ctx = a ? buildAssignmentContext(a, records, sources) : null;
+    const syllabus = mine.some((x) => sourceKind(x) === 'syllabus');
+    const rules = syllabus || (ctx?.policies.length ?? 0) > 0 || mine.some((x) => sourceKind(x) === 'policy');
+    const announcements = mine.some((x) => sourceKind(x) === 'announcement') || (ctx?.announcements.length ?? 0) > 0;
+    const brief = pastedBrief || (ctx?.instructions.length ?? 0) > 0 || typeof a?.fields.instructions === 'string' || (ctx?.rubric.length ?? 0) > 0;
+    const have: string[] = [];
+    const missing: string[] = [];
+    (syllabus ? have : missing).push('the syllabus');
+    (rules ? have : missing).push('the course rules');
+    (announcements ? have : missing).push('announcements');
+    (brief ? have : missing).push('the assignment brief');
+    return { have, missing, blocking: !syllabus || !brief };
+  }
+
   /** One chat turn: the student's message in, the assistant's reply out. */
-  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string, opts: { task?: 'assignment' | 'general'; embed?: RawEmbed; tools?: ToolResult[] } = {}): Promise<{ text: string; model: string; task: 'assignment' | 'general'; search: 'meaning' | 'keywords' | 'none'; passages: number }> {
+  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string, opts: { task?: 'assignment' | 'general'; embed?: RawEmbed; tools?: ToolResult[] } = {}): Promise<{ text: string; model: string; provider: Provider; why: string; task: 'assignment' | 'general'; search: 'meaning' | 'keywords' | 'none'; passages: number }> {
     const s = await this.aiSettings();
-    if (!aiReady(s)) {
-      throw new Error(isCloud(s.provider) && !s.cloudConsent
-        ? `Agree to send material to ${PROVIDER_NAME[s.provider]} in Semester setup → AI assistant first.`
-        : 'Turn on the AI assistant in Semester setup first, then I can answer here.');
-    }
     const history = (await this.chatHistory(key)).filter((m) => m.kind !== 'intake').slice(-12).map((m) => ({ role: m.role, content: m.content }));
     const task = opts.task ?? (assignmentId ? 'assignment' : 'general');
-    const model = modelFor(s, task === 'assignment' ? 'writing' : 'chat');
-    const found = await this.passagesFor(code, text, s, s.provider === 'ollama' ? opts.embed : undefined);
+    const job: AiJob = task === 'assignment' ? 'assignment' : 'chat';
+    await this.pickFor(job); // fails early, with a plain message, when no model can answer
+    const found = await this.passagesFor(code, text, s, s.enabled.ollama ? opts.embed : undefined);
     const system = await this.chatSystemFor(code, assignmentId, today, found.map((f) => f.text), (opts.tools ?? []).map((t) => `${t.label}:\n${t.text}`));
-    const reply = await complete({ provider: s.provider, model, system, prompt: text, history, json: false, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
-    return { text: reply, model, task, search: found[0]?.how ?? 'none', passages: found.length };
+    const { text: reply, pick } = await this.completeFor(job, complete, { system, prompt: text, history, json: false });
+    const model = pick.model;
+    await this.repo.setSetting('ai.lastReply', { provider: pick.provider, model: pick.model });
+    return { text: reply, model, provider: pick.provider, why: pick.why, task, search: found[0]?.how ?? 'none', passages: found.length };
   }
 }

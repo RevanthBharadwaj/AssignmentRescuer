@@ -3,7 +3,8 @@ import { useApp } from '../AppContext';
 import { canDownload, installedModels, pullModel, type PullProgress } from '../ollamaClient';
 import { useAsync } from '../useAsync';
 import type { ConfirmedRecord } from '../../core/types';
-import { ANTHROPIC_MODELS, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
+import { ANTHROPIC_MODELS, aiReady, normaliseAi, type AiJob, type BriefingAction, type Provider } from '../../core/ai';
+import { JOB_INFO, candidates, spentThisMonth, usd } from '../../core/providers';
 import { completeAi, hasSecret, setSecret } from '../aiClient';
 import { CLOUD_SETUP, DEFAULT_EMBED_TAG, DEFAULT_LOCAL_TAG, DEFAULT_VISION_TAG, DEFAULT_WRITING_TAG, EMBED_MODELS, HELPER_MODELS, LOCAL_MODELS, ROLE_INFO, isInstalled, modelFor, modelLabel, pullCommand, stars, type Role } from '../../core/models';
 import { errorMessage } from '../format';
@@ -97,15 +98,13 @@ export const runAssignment = (service: ReturnType<typeof useApp>['service'], id:
 
 /* ---------- settings (Semester setup step 05) ---------- */
 
-const PROVIDERS: { id: AiProvider; label: string; help: string }[] = [
-  { id: 'none', label: 'Off', help: 'No AI. Everything else works as before.' },
+const PROVIDERS: { id: Provider; label: string; help: string }[] = [
   { id: 'ollama', label: 'Free local model (Ollama)', help: 'Free and private. Runs on this computer; nothing leaves it. Pick a model below, then press Download.' },
-  { id: 'openai', label: 'OpenAI (ChatGPT models)', help: 'Needs an API key from platform.openai.com (paid per use). Material you analyze or paste into Chat is sent to OpenAI.' },
-  { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Needs an API key from console.anthropic.com (paid per use). Material you analyze or paste into Chat is sent to Anthropic.' },
+  { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Needs an API key from console.anthropic.com (paid per use). Assignments are always analyzed with Claude. Material you analyze or paste is sent to Anthropic.' },
+  { id: 'openai', label: 'OpenAI (ChatGPT models)', help: 'Needs an API key from platform.openai.com (paid per use). Used for other jobs when it is the cheapest that fits. Material you analyze or paste is sent to OpenAI.' },
 ];
 
-const defaultModel = (p: AiProvider) => (p === 'ollama' ? DEFAULT_LOCAL_TAG : p === 'anthropic' ? ANTHROPIC_MODELS[0].id : p === 'openai' ? OPENAI_MODELS[0].id : '');
-const providerName = (p: AiProvider) => (p === 'openai' ? 'OpenAI' : 'Anthropic');
+const providerName = (p: Provider) => (p === 'openai' ? 'OpenAI' : p === 'anthropic' ? 'Anthropic' : 'Ollama');
 
 function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
   const id = useId();
@@ -191,12 +190,42 @@ function RoleRow({ role, value, options, none, onChange, open, onSetup, baseUrl,
   );
 }
 
+/** This month's estimated spend per provider, and the optional limit. */
+function UsageCard({ s, spent, calls }: { s: ReturnType<typeof normaliseAi>; spent: Record<Provider, number>; calls: Record<Provider, number> }) {
+  const rows = (['anthropic', 'openai'] as const).filter((p) => s.enabled[p] || spent[p] > 0);
+  return (
+    <div className="usage-card">
+      <h3>This month</h3>
+      {rows.length === 0 && <p className="muted small">Nothing paid is switched on, so nothing is being charged.</p>}
+      {rows.map((p) => {
+        const limit = s.routing.limits[p];
+        return (
+          <div key={p} className="usage-row">
+            <strong>{providerName(p)}</strong>
+            <span className="mono">{usd(spent[p])}</span>
+            <span className="muted small">{calls[p]} call{calls[p] === 1 ? '' : 's'}{limit !== null ? ` · limit ${usd(limit)}` : ' · no limit'}{limit !== null && spent[p] >= limit ? ' · reached, using a free local model' : ''}</span>
+          </div>
+        );
+      })}
+      <p className="muted small">An estimate from the size of what was sent and received, at each provider's published price. The exact bill is on the provider's own site. Local models are free.</p>
+    </div>
+  );
+}
+
 export function AiSettingsCard() {
   const { service, version, refresh } = useApp();
-  const { data } = useAsync(async () => ({ s: await service.aiSettings(), keys: { anthropic: await hasSecret('anthropic'), openai: await hasSecret('openai') } }), [version]);
+  const { data } = useAsync(async () => {
+    const usage = await service.usageLog();
+    return {
+      s: await service.aiSettings(),
+      keys: { anthropic: await hasSecret('anthropic'), openai: await hasSecret('openai') },
+      spent: spentThisMonth(usage, new Date()),
+      calls: (() => { const month = new Date().toISOString().slice(0, 7); const c: Record<Provider, number> = { ollama: 0, anthropic: 0, openai: 0 }; for (const e of usage) if (e.at.slice(0, 7) === month) c[e.provider]++; return c; })(),
+    };
+  }, [version]);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<AiSettings | null>(null);
-  const [key, setKey] = useState('');
+  const [draft, setDraft] = useState<ReturnType<typeof normaliseAi> | null>(null);
+  const [keys, setKeys] = useState<{ anthropic: string; openai: string }>({ anthropic: '', openai: '' });
   const [error, setError] = useState<string | null>(null);
   const [setup, setSetup] = useState<string | null>(null);
   const [installed, setInstalled] = useState<string[] | null>(null);
@@ -210,24 +239,35 @@ export function AiSettingsCard() {
   }, [ollamaUrl, recheck]);
   if (!data) return null;
   const s = draft ?? data.s;
-  const cloud = isCloud(s.provider);
-  const hasKey = s.provider === 'anthropic' || s.provider === 'openai' ? data.keys[s.provider] : false;
-  const showForm = editing || data.s.provider === 'none';
+  const anyOn = data.s.enabled.ollama || data.s.enabled.anthropic || data.s.enabled.openai;
+  const cloudOn = s.enabled.anthropic || s.enabled.openai;
+  const showForm = editing || !anyOn;
+  const set = (patch: Partial<ReturnType<typeof normaliseAi>>) => setDraft({ ...s, ...patch });
+  const turn = (p: Provider, on: boolean) => {
+    const next = { ...s, enabled: { ...s.enabled, [p]: on } };
+    if (p === 'ollama' && on) Object.assign(next, { model: s.model || DEFAULT_LOCAL_TAG, writingModel: s.writingModel || DEFAULT_WRITING_TAG, visionModel: s.visionModel || DEFAULT_VISION_TAG, embedModel: s.embedModel || DEFAULT_EMBED_TAG });
+    setDraft(next);
+  };
 
   if (!showForm) {
-    const saved = isCloud(data.s.provider) ? data.keys[data.s.provider as 'anthropic' | 'openai'] : false;
+    const names = PROVIDERS.filter((p) => data.s.enabled[p.id]).map((p) => p.label.replace(/ \(.*\)/, ''));
     return (
       <>
         <dl className="saved-values">
-          <div><dt>Provider</dt><dd>{PROVIDERS.find((p) => p.id === data.s.provider)?.label}</dd></div>
-          <div><dt>Everyday model</dt><dd className="mono small">{modelLabel(data.s.model)}</dd></div>
-          {data.s.provider === 'ollama' && <>
-            <div><dt>Assignment model</dt><dd className="mono small">{modelLabel(modelFor(data.s, 'writing'))}</dd></div>
+          <div><dt>Providers on</dt><dd>{names.join(', ')}</dd></div>
+          {data.s.enabled.anthropic && <div><dt>Assignment analysis</dt><dd className="mono small">{modelLabel(data.s.routing.assignmentModel)}</dd></div>}
+          {!data.s.enabled.anthropic && <div><dt>Assignment analysis</dt><dd className="none">Needs Claude. Turn it on to analyze assignments.</dd></div>}
+          <div><dt>Other jobs</dt><dd>{data.s.routing.mode === 'auto' ? 'Chosen for you: the cheapest model that fits each job' : 'Chosen by you, job by job'}</dd></div>
+          {data.s.enabled.ollama && <>
+            <div><dt>Everyday local model</dt><dd className="mono small">{modelLabel(data.s.model)}</dd></div>
             <div><dt>Image model</dt><dd className={modelFor(data.s, 'vision') ? 'mono small' : 'none'}>{modelFor(data.s, 'vision') ? modelLabel(modelFor(data.s, 'vision')) : 'Not set up'}</dd></div>
             <div><dt>Search model</dt><dd className={modelFor(data.s, 'embed') ? 'mono small' : 'none'}>{modelFor(data.s, 'embed') ? modelLabel(modelFor(data.s, 'embed')) : 'Keywords only'}</dd></div>
           </>}
-          {isCloud(data.s.provider) && <div><dt>API key</dt><dd className={saved ? '' : 'none'}>{saved ? 'Saved in your keychain' : 'Not saved'}</dd></div>}
+          {(['anthropic', 'openai'] as const).filter((p) => data.s.enabled[p]).map((p) => (
+            <div key={p}><dt>{providerName(p)} key</dt><dd className={data.keys[p] ? '' : 'none'}>{data.keys[p] ? 'Saved in your keychain' : 'Not saved'}</dd></div>
+          ))}
         </dl>
+        <UsageCard s={data.s} spent={data.spent} calls={data.calls} />
         <button type="button" className="modify" onClick={() => { setDraft(data.s); setEditing(true); }}>Modify</button>
       </>
     );
@@ -236,10 +276,13 @@ export function AiSettingsCard() {
   const save = async () => {
     setError(null);
     try {
-      if (cloud && key.trim()) await setSecret(s.provider as 'anthropic' | 'openai', key.trim());
-      if (cloud && !key.trim() && !hasKey) throw new Error(`Paste your ${providerName(s.provider)} API key.`);
-      await service.saveAiSettings({ ...s, model: s.model || defaultModel(s.provider) });
-      setKey('');
+      for (const p of ['anthropic', 'openai'] as const) {
+        if (!s.enabled[p]) continue;
+        if (keys[p].trim()) await setSecret(p, keys[p].trim());
+        else if (!data.keys[p]) throw new Error(`Paste your ${providerName(p)} API key.`);
+      }
+      await service.saveAiSettings({ ...s, model: s.enabled.ollama ? s.model || DEFAULT_LOCAL_TAG : s.model });
+      setKeys({ anthropic: '', openai: '' });
       setDraft(null);
       setEditing(false);
       refresh();
@@ -248,19 +291,23 @@ export function AiSettingsCard() {
     }
   };
 
+  const pool = candidates(s);
+  const manualJobs: AiJob[] = ['chat', 'read', 'review'];
+
   return (
     <>
-      <p className="muted small">The assistant answers in Chat and reads announcements and assignments to write down what you need to do. It never changes dates or items.</p>
+      <p className="muted small">The assistant answers in Chat and reads announcements and assignments to write down what you need to do. Turn on as many providers as you like. It never changes dates or items without your approval.</p>
       <div className="kind-options">
         {PROVIDERS.map((p) => (
-          <label key={p.id} className={`kind-option ${s.provider === p.id ? 'on' : ''}`}>
-            <input type="radio" name="ai-provider" checked={s.provider === p.id} onChange={() => setDraft({ ...s, provider: p.id, model: defaultModel(p.id), ...(p.id === 'ollama' ? { writingModel: s.writingModel || DEFAULT_WRITING_TAG, visionModel: s.visionModel || DEFAULT_VISION_TAG, embedModel: s.embedModel || DEFAULT_EMBED_TAG } : {}) })} />
+          <label key={p.id} className={`kind-option ${s.enabled[p.id] ? 'on' : ''}`}>
+            <input type="checkbox" checked={s.enabled[p.id]} onChange={(e) => turn(p.id, e.target.checked)} />
             <strong>{p.label}</strong>
             <span className="muted small">{p.help}</span>
           </label>
         ))}
       </div>
-      {s.provider === 'ollama' && (
+
+      {s.enabled.ollama && (
         <>
           <h3>Everyday model</h3>
           <div className="model-list" role="radiogroup" aria-label="Free local models">
@@ -268,7 +315,7 @@ export function AiSettingsCard() {
               <div key={m.tag} className={`model-card ${s.model === m.tag ? 'on' : ''}`}>
                 <div className="model-top">
                   <label className="model-pick">
-                    <input type="radio" name="ai-model" checked={s.model === m.tag} onChange={() => setDraft({ ...s, model: m.tag })} aria-label={m.name} />
+                    <input type="radio" name="ai-model" checked={s.model === m.tag} onChange={() => set({ model: m.tag })} aria-label={m.name} />
                     <strong>{m.name}</strong>
                   </label>
                   {m.recommended && <span className="pill">{m.recommended}</span>}
@@ -297,55 +344,97 @@ export function AiSettingsCard() {
             ))}
           </div>
           <label>Other model name from Ollama
-            <input value={LOCAL_MODELS.some((m) => m.tag === s.model) ? '' : s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} placeholder="for example mistral" />
+            <input value={LOCAL_MODELS.some((m) => m.tag === s.model) ? '' : s.model} onChange={(e) => set({ model: e.target.value })} placeholder="for example mistral" />
           </label>
-          <h3>Other jobs, other models</h3>
+          <h3>Other jobs, other local models</h3>
           <p className="muted small">The app can use a different free model for each job. Each runs on this computer. Pick one and press Download; the app gets it for you after you confirm.</p>
-          <RoleRow role="writing" value={s.writingModel ?? ''} none="Same as the everyday model" options={LOCAL_MODELS.filter((m) => !m.vision)} open={setup === 'writing'} onSetup={() => setSetup('writing')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, writingModel: tag })} />
-          <RoleRow role="vision" value={s.visionModel ?? ''} none="Not set up (images will not be read)" options={LOCAL_MODELS.filter((m) => m.vision)} open={setup === 'vision'} onSetup={() => setSetup('vision')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, visionModel: tag })} />
-          <RoleRow role="embed" value={s.embedModel ?? ''} none="Not set up (search by keywords only)" options={EMBED_MODELS} open={setup === 'embed'} onSetup={() => setSetup('embed')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, embedModel: tag })} />
-          <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => setDraft({ ...s, ollamaUrl: e.target.value })} /></label>
+          <RoleRow role="writing" value={s.writingModel ?? ''} none="Same as the everyday model" options={LOCAL_MODELS.filter((m) => !m.vision)} open={setup === 'writing'} onSetup={() => setSetup('writing')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => set({ writingModel: tag })} />
+          <RoleRow role="vision" value={s.visionModel ?? ''} none="Not set up (images will not be read)" options={LOCAL_MODELS.filter((m) => m.vision)} open={setup === 'vision'} onSetup={() => setSetup('vision')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => set({ visionModel: tag })} />
+          <RoleRow role="embed" value={s.embedModel ?? ''} none="Not set up (search by keywords only)" options={EMBED_MODELS} open={setup === 'embed'} onSetup={() => setSetup('embed')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => set({ embedModel: tag })} />
+          <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} /></label>
           <details className="helper-models">
             <summary>Search and checking models planned for later</summary>
             <ul>{HELPER_MODELS.map((h) => <li key={h.name}><b>{h.name}</b> <span className="mono small">{h.hf}</span> {h.job}</li>)}</ul>
           </details>
         </>
       )}
-      {cloud && (
-        <>
+
+      {(['anthropic', 'openai'] as const).filter((p) => s.enabled[p]).map((p) => (
+        <div key={p} className="provider-box">
+          <h3>{p === 'anthropic' ? 'Claude' : 'OpenAI'}</h3>
           <div className="grid">
-            <label>Model
-              {s.provider === 'anthropic' ? (
-                <select value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })}>
-                  {ANTHROPIC_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                </select>
-              ) : (
-                <>
-                  <input list="openai-models" value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} />
-                  <datalist id="openai-models">{OPENAI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
-                </>
-              )}
+            <label>API key {data.keys[p] ? '(saved; paste a new one to replace it)' : ''}
+              <input type="password" aria-label={`${providerName(p)} API key`} value={keys[p]} onChange={(e) => setKeys({ ...keys, [p]: e.target.value })} placeholder={p === 'openai' ? 'sk-…' : 'sk-ant-…'} autoComplete="off" spellCheck={false} />
             </label>
-            <label>API key {hasKey ? '(saved; paste a new one to replace it)' : ''}
-              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={s.provider === 'openai' ? 'sk-…' : 'sk-ant-…'} autoComplete="off" spellCheck={false} />
+            <label>Monthly limit in dollars (optional)
+              <input type="number" min="0" step="1" aria-label={`${providerName(p)} monthly limit`} value={s.routing.limits[p] ?? ''} placeholder="No limit"
+                onChange={(e) => set({ routing: { ...s.routing, limits: { ...s.routing.limits, [p]: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) } } })} />
             </label>
           </div>
-          <button type="button" className="secondary small" onClick={() => setSetup(setup === s.provider ? null : s.provider)}>{hasKey ? 'Setup steps' : 'Set up an API key'}</button>
-          {setup === s.provider && CLOUD_SETUP.filter((c) => c.provider === s.provider).map((c) => (
+          {p === 'anthropic' && (
+            <label>Claude model for analyzing assignments
+              <select value={s.routing.assignmentModel} onChange={(e) => set({ routing: { ...s.routing, assignmentModel: e.target.value } })}>
+                {ANTHROPIC_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+          )}
+          <button type="button" className="secondary small" onClick={() => setSetup(setup === p ? null : p)}>{data.keys[p] ? 'Setup steps' : 'Set up an API key'}</button>
+          {setup === p && CLOUD_SETUP.filter((c) => c.provider === p).map((c) => (
             <div key={c.provider} className="setup-steps small">
               <p><b>{c.name}</b> is a paid service. {c.cost} Keys come from <span className="mono">{c.keyPage}</span>.</p>
               <ol>{c.steps.map((x) => <li key={x}>{x}</li>)}</ol>
             </div>
           ))}
+        </div>
+      ))}
+      {cloudOn && (
+        <>
           <p className="muted small">On a Mac, the first time the app uses your key, macOS asks for your Mac login password to open the keychain. That is your Mac asking, not the app. Press Always Allow and it will not ask again for this version of the app; a new version asks once more.</p>
           <label className="consent">
-            <input type="checkbox" checked={s.cloudConsent} onChange={(e) => setDraft({ ...s, cloudConsent: e.target.checked })} />
-            <span>I agree that the text of announcements and assignments I analyze, and anything I type or paste into Chat, is sent to {providerName(s.provider)}. Nothing is sent until I press an AI button or send a chat message.</span>
+            <input type="checkbox" checked={s.cloudConsent} onChange={(e) => set({ cloudConsent: e.target.checked })} />
+            <span>I agree that the text of announcements and assignments I analyze, and anything I type or paste into Chat, is sent to the paid providers I turned on. Nothing is sent until I press an AI button or send a chat message.</span>
           </label>
         </>
       )}
+
+      {pool.length > 0 && (
+        <div className="routing-box">
+          <h3>Which model does which job</h3>
+          <p className="muted small">Analyzing an assignment always uses Claude, and only after the syllabus, rules and brief are gathered. For everything else:</p>
+          <div className="kind-options">
+            <label className={`kind-option ${s.routing.mode === 'auto' ? 'on' : ''}`}>
+              <input type="radio" name="ai-routing" checked={s.routing.mode === 'auto'} onChange={() => set({ routing: { ...s.routing, mode: 'auto' } })} />
+              <strong>Automatic</strong>
+              <span className="muted small">The app picks the cheapest model that is good enough for each job. Free local models come first.</span>
+            </label>
+            <label className={`kind-option ${s.routing.mode === 'manual' ? 'on' : ''}`}>
+              <input type="radio" name="ai-routing" checked={s.routing.mode === 'manual'} onChange={() => set({ routing: { ...s.routing, mode: 'manual' } })} />
+              <strong>I choose</strong>
+              <span className="muted small">Pick the model for each job yourself.</span>
+            </label>
+          </div>
+          {s.routing.mode === 'manual' && manualJobs.map((j) => {
+            const chosen = s.routing.manual[j];
+            return (
+              <label key={j}>{JOB_INFO[j].label}
+                <select value={chosen ? `${chosen.provider}|${chosen.model}` : ''} onChange={(e) => {
+                  const manual = { ...s.routing.manual };
+                  if (!e.target.value) delete manual[j];
+                  else { const [provider, model] = e.target.value.split('|'); manual[j] = { provider: provider as Provider, model }; }
+                  set({ routing: { ...s.routing, manual } });
+                }}>
+                  <option value="">Automatic for this job</option>
+                  {pool.map((m) => <option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>{m.label}{m.provider === 'ollama' ? ' (free, local)' : ` (${providerName(m.provider)})`}</option>)}
+                </select>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      <UsageCard s={s} spent={data.spent} calls={data.calls} />
       <div className="row">
-        <button type="button" disabled={cloud && !s.cloudConsent} onClick={save}>Save AI settings</button>
+        <button type="button" disabled={cloudOn && !s.cloudConsent} onClick={save}>Save AI settings</button>
         {editing && <button type="button" className="secondary" onClick={() => { setDraft(null); setEditing(false); }}>Cancel</button>}
       </div>
       {error && <p role="alert" className="error">{error}</p>}

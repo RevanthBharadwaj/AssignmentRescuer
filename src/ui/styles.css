@@ -868,3 +868,9 @@ main:has(.chat) { max-width: none; padding: 14px 24px calc(var(--dock-h) + 14px)
 .timer-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; display: grid; gap: 10px; min-width: 260px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0,0,0,.5); }
 .timer-days { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .timer-pop .check { display: inline-flex; gap: 6px; align-items: center; }
+
+/* ---------- several providers, routing and cost ---------- */
+.provider-box, .routing-box, .usage-card { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); display: grid; gap: 10px; }
+.provider-box h3, .routing-box h3, .usage-card h3 { margin: 0; font-size: 16px; }
+.usage-row { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+.usage-row .mono { color: var(--lime-200); }

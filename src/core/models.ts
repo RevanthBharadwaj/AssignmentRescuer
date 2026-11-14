@@ -1,3 +1,4 @@
+import { CLOUD_CATALOG } from './providers';
 /**
  * Models the app can offer. Local models are free open weights from Hugging
  * Face, run through Ollama on the student's own computer. Sizes and memory
@@ -100,6 +101,8 @@ export function modelFor(s: RoleSettings, role: Role): string {
 
 /** Short name for the screen, for example "Qwen3 8B". */
 export function modelLabel(tag: string): string {
+  const cloud = CLOUD_CATALOG.find((m) => m.id === tag);
+  if (cloud) return cloud.label;
   const all = [...LOCAL_MODELS.map((m) => [m.tag, m.name]), ...EMBED_MODELS.map((m) => [m.tag, m.name])];
   return all.find(([t]) => t === tag)?.[1] ?? tag;
 }

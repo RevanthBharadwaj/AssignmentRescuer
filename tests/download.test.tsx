@@ -35,7 +35,7 @@ describe('model download', () => {
     const { service } = await makeService();
     render(<App service={service} mode="test" today="2026-09-02" />);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Semester setup' }));
-    fireEvent.click(await screen.findByRole('radio', { name: /Free local model/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Free local model/ }));
 
     const card = (name: string) => screen.getByRole('radio', { name }).closest('.model-card') as HTMLElement;
     await waitFor(() => expect(within(card('Qwen3 8B')).getByText(/Installed/)).toBeInTheDocument());

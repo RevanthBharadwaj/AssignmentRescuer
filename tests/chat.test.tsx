@@ -83,7 +83,7 @@ describe('unit blocks and chat', () => {
 
   it('uses the find sources tool from chat, saves the APA reference and lets the chat cite only that', async () => {
     const service = await setup();
-    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: true, writingModel: 'qwen3:8b', visionModel: '', embedModel: '', enabled: { ollama: true, anthropic: true, openai: false } });
     const a = (await service.repository.listRecords('assignment'))[0];
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
     fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
@@ -92,6 +92,7 @@ describe('unit blocks and chat', () => {
     expect(screen.getByLabelText('Tools the chat can use')).toHaveTextContent('Find sources');
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'find sources on learning habits seminars' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask anyway' }));
     expect(await screen.findByText(/Find sources: 1 found for "learning habits seminars"/)).toBeInTheDocument();
     expect(await screen.findByText(/\(Rivera, 2021\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save with this assignment' }));
@@ -104,7 +105,7 @@ describe('unit blocks and chat', () => {
 
   it('writes the assignment as a document and saves it as a Word file', async () => {
     const service = await setup();
-    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: true, writingModel: 'qwen3:8b', visionModel: '', embedModel: '', enabled: { ollama: true, anthropic: true, openai: false } });
     const a = (await service.repository.listRecords('assignment'))[0];
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
     fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
@@ -119,25 +120,57 @@ describe('unit blocks and chat', () => {
 
   it('names the model, uses the assignment model for assignment work and asks when unsure', async () => {
     const service = await setup();
-    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false, writingModel: 'qwen3:8b', visionModel: '', embedModel: '' });
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: true, writingModel: 'qwen3:8b', visionModel: '', embedModel: '', enabled: { ollama: true, anthropic: true, openai: false } });
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
     fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
-    expect(await screen.findByText(/Everyday: Qwen3 4B · Assignments: Qwen3 8B/)).toBeInTheDocument();
+    expect(await screen.findByText(/Everyday: Qwen3 4B · Assignments: Claude Sonnet 5.5/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello, how is everyone today' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByText(/Qwen3 4B · everyday model/)).toBeInTheDocument();
+    expect(await screen.findByText(/Qwen3 4B · everyday chat \(free, on this computer\)/)).toBeInTheDocument();
 
     fireEvent.change(await screen.findByLabelText('Message'), { target: { value: 'Write the Week 2 reflection paper in APA, 500 words, due Saturday, 50 points' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
-    expect(await screen.findByText(/Qwen3 8B · assignment model/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask anyway' }));
+    expect(await screen.findByText(/Claude Sonnet 5.5 · assignment analysis/)).toBeInTheDocument();
 
     const long = `Reminder about the paper.\n${'Please keep reading the course material carefully and ask questions in the forum. '.repeat(8)}`;
     fireEvent.change(await screen.findByLabelText('Message'), { target: { value: long } });
     fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/Is this about an assignment, or something else/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Something else' }));
-    await screen.findAllByText(/Qwen3 4B · everyday model|saved|already|nothing new|No new|added|found/i, undefined, { timeout: 4000 });
+    await screen.findAllByText(/Qwen3 4B · everyday chat|saved|already|nothing new|No new|added|found/i, undefined, { timeout: 4000 });
     expect(screen.queryByText(/Is this about an assignment, or something else/)).not.toBeInTheDocument();
+  });
+
+  it('waits for the syllabus and brief before analyzing an assignment, then goes ahead when asked', async () => {
+    const service = await setup();
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: true, writingModel: 'qwen3:8b', visionModel: '', embedModel: '', enabled: { ollama: true, anthropic: true, openai: false } });
+    const a = (await service.repository.listRecords('assignment'))[0];
+    const ctx = await service.assignmentContext('DSC 6400', a.id);
+    expect(ctx.blocking).toBe(true);
+    expect(ctx.missing).toContain('the syllabus');
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
+    fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
+    fireEvent.change(screen.getByLabelText('Working on'), { target: { value: a.id } });
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'How should I plan this one?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/missing the syllabus/)).toBeInTheDocument();
+    expect(screen.queryByText(/Claude Sonnet 5.5 · assignment analysis/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Ask anyway' }));
+    expect(await screen.findByText(/Claude Sonnet 5.5 · assignment analysis/)).toBeInTheDocument();
+  });
+
+  it('says assignments need Claude when only a local model is on', async () => {
+    const service = await setup();
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
+    const a = (await service.repository.listRecords('assignment'))[0];
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
+    fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
+    fireEvent.change(screen.getByLabelText('Working on'), { target: { value: a.id } });
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'How should I plan this one?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask anyway' }));
+    expect(await screen.findByText(/Assignment analysis uses Claude/)).toBeInTheDocument();
   });
 });
