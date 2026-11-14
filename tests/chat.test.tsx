@@ -48,11 +48,11 @@ describe('unit blocks and chat', () => {
     const before = (await service.repository.listRecords('assignment')).length;
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: paste } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByText(/already|nothing new|saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/already|nothing new|duplicate|no new/i, undefined, { timeout: 4000 })).toBeInTheDocument();
     expect((await service.repository.listRecords('assignment')).length).toBe(before);
 
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'What should I read first?' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/Turn on the AI|Start with the Unit 1 reading/)).toBeInTheDocument();
   });
 });

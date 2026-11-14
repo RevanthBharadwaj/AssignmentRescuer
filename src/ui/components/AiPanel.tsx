@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { ConfirmedRecord } from '../../core/types';
-import { ANTHROPIC_MODELS, DEFAULT_OLLAMA_MODEL, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
+import { ANTHROPIC_MODELS, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
 import { completeAi, hasSecret, setSecret } from '../aiClient';
+import { CLOUD_SETUP, DEFAULT_LOCAL_TAG, HELPER_MODELS, LOCAL_MODELS, pullCommand, stars } from '../../core/models';
 import { errorMessage } from '../format';
 
 /* ---------- a saved AI note ---------- */
@@ -90,13 +91,23 @@ export const runAssignment = (service: ReturnType<typeof useApp>['service'], id:
 
 const PROVIDERS: { id: AiProvider; label: string; help: string }[] = [
   { id: 'none', label: 'Off', help: 'No AI. Everything else works as before.' },
-  { id: 'ollama', label: 'Local model (Ollama)', help: 'Free. Runs on this computer; nothing leaves it. Install Ollama from ollama.com and run `ollama pull llama3.1` once.' },
+  { id: 'ollama', label: 'Free local model (Ollama)', help: 'Free and private. Runs on this computer; nothing leaves it. Pick a model below, then press Set up.' },
   { id: 'openai', label: 'OpenAI (ChatGPT models)', help: 'Needs an API key from platform.openai.com (paid per use). Material you analyze or paste into Chat is sent to OpenAI.' },
   { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Needs an API key from console.anthropic.com (paid per use). Material you analyze or paste into Chat is sent to Anthropic.' },
 ];
 
-const defaultModel = (p: AiProvider) => (p === 'ollama' ? DEFAULT_OLLAMA_MODEL : p === 'anthropic' ? ANTHROPIC_MODELS[0].id : p === 'openai' ? OPENAI_MODELS[0].id : '');
+const defaultModel = (p: AiProvider) => (p === 'ollama' ? DEFAULT_LOCAL_TAG : p === 'anthropic' ? ANTHROPIC_MODELS[0].id : p === 'openai' ? OPENAI_MODELS[0].id : '');
 const providerName = (p: AiProvider) => (p === 'openai' ? 'OpenAI' : 'Anthropic');
+
+function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  const id = useId();
+  return (
+    <span className="info-tip">
+      <button type="button" className="info-btn" aria-label={label} aria-describedby={id}>i</button>
+      <span role="tooltip" id={id} className="info-bubble">{children}</span>
+    </span>
+  );
+}
 
 export function AiSettingsCard() {
   const { service, version, refresh } = useApp();
@@ -105,6 +116,7 @@ export function AiSettingsCard() {
   const [draft, setDraft] = useState<AiSettings | null>(null);
   const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<string | null>(null);
   if (!data) return null;
   const s = draft ?? data.s;
   const cloud = isCloud(s.provider);
@@ -153,10 +165,44 @@ export function AiSettingsCard() {
         ))}
       </div>
       {s.provider === 'ollama' && (
-        <div className="grid">
-          <label>Model name<input value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
+        <>
+          <div className="model-list" role="radiogroup" aria-label="Free local models">
+            {LOCAL_MODELS.map((m) => (
+              <div key={m.tag} className={`model-card ${s.model === m.tag ? 'on' : ''}`}>
+                <label>
+                  <input type="radio" name="ai-model" checked={s.model === m.tag} onChange={() => setDraft({ ...s, model: m.tag })} aria-label={m.name} />
+                  <strong>{m.name}</strong>
+                  {m.recommended && <span className="pill">{m.recommended}</span>}
+                  {m.vision && <span className="pill alt">reads images</span>}
+                </label>
+                <InfoTip label={`About ${m.name}`}>
+                  <b>{m.name}</b>
+                  <span className="mono small">{m.hf}</span>
+                  <span>Quality for coursework: <span aria-label={`${m.stars} out of 5`}>{stars(m.stars)}</span></span>
+                  <span>{m.about}</span>
+                  <span>Download {m.size}, about {m.memory}. Licence: {m.licence}.</span>
+                </InfoTip>
+                <span className="muted small model-best">{m.best}</span>
+                <button type="button" className="secondary small" onClick={() => { void navigator.clipboard?.writeText(pullCommand(m.tag)); setSetup(m.tag); }}>Set up</button>
+                {setup === m.tag && (
+                  <ol className="setup-steps small">
+                    <li>Install Ollama from ollama.com (free) and open it.</li>
+                    <li>In Terminal (Mac) or PowerShell (Windows) run <code>{pullCommand(m.tag)}</code>. It is copied for you. The download is {m.size}, once.</li>
+                    <li>Come back, choose this model and press Save AI settings.</li>
+                  </ol>
+                )}
+              </div>
+            ))}
+          </div>
+          <label>Other model name from Ollama
+            <input value={LOCAL_MODELS.some((m) => m.tag === s.model) ? '' : s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} placeholder="for example mistral" />
+          </label>
           <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => setDraft({ ...s, ollamaUrl: e.target.value })} /></label>
-        </div>
+          <details className="helper-models">
+            <summary>Search and checking models planned for later</summary>
+            <ul>{HELPER_MODELS.map((h) => <li key={h.name}><b>{h.name}</b> <span className="mono small">{h.hf}</span> {h.job}</li>)}</ul>
+          </details>
+        </>
       )}
       {cloud && (
         <>
@@ -177,6 +223,13 @@ export function AiSettingsCard() {
               <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={s.provider === 'openai' ? 'sk-…' : 'sk-ant-…'} autoComplete="off" spellCheck={false} />
             </label>
           </div>
+          <button type="button" className="secondary small" onClick={() => setSetup(setup === s.provider ? null : s.provider)}>{hasKey ? 'Setup steps' : 'Set up an API key'}</button>
+          {setup === s.provider && CLOUD_SETUP.filter((c) => c.provider === s.provider).map((c) => (
+            <div key={c.provider} className="setup-steps small">
+              <p><b>{c.name}</b> is a paid service. {c.cost} Keys come from <span className="mono">{c.keyPage}</span>.</p>
+              <ol>{c.steps.map((x) => <li key={x}>{x}</li>)}</ol>
+            </div>
+          ))}
           <label className="consent">
             <input type="checkbox" checked={s.cloudConsent} onChange={(e) => setDraft({ ...s, cloudConsent: e.target.checked })} />
             <span>I agree that the text of announcements and assignments I analyze, and anything I type or paste into Chat, is sent to {providerName(s.provider)}. Nothing is sent until I press an AI button or send a chat message.</span>

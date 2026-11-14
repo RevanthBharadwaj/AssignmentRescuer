@@ -210,10 +210,13 @@ describe('desktop UI', () => {
     fireEvent.click(top('Semester setup'));
     fireEvent.click(await screen.findByRole('radio', { name: /Claude \(Anthropic API\)/ }));
     expect(screen.getByRole('button', { name: 'Save AI settings' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('radio', { name: /Local model \(Ollama\)/ }));
-    expect(screen.getByLabelText('Model name')).toHaveValue('llama3.1');
+    fireEvent.click(screen.getByRole('radio', { name: /Free local model/ }));
+    expect(screen.getByRole('radio', { name: 'Qwen3 4B' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'About Qwen3 8B' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Set up' })[0]);
+    expect(screen.getByText(/ollama pull qwen3:4b/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
-    expect(await screen.findByText('llama3.1')).toBeInTheDocument();
+    expect(await screen.findByText('qwen3:4b')).toBeInTheDocument();
 
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
