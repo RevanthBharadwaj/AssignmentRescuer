@@ -30,6 +30,15 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
+**Setup polish, course list import and title page (latest)**
+
+1. Saved setup sections are shown read only, with values as text and an olive Modify button; Modify opens the fields again with Save and Cancel.
+2. Setup asks for your name (used on title pages).
+3. A Canvas course list (Courses → All Courses) pasted into setup adds every course with its code, name and section, and sets the semester name from the term if none is set. Each saved course has Modify (name, instructor) and remove.
+4. The student's paper format was recorded from a submitted paper in `docs/specs/paper-format.md` (APA 7 student format: Times New Roman 12, double spaced, 1 inch margins, page number top right, title page order).
+5. Paper-type assignments show a title page preview in that format, filled from setup, the course and the due date. Word export of full papers is part of the writing milestone.
+6. 101 Vitest tests; the desktop end to end test now pastes a course list, modifies a course and builds a title page.
+
 **Course centred app and Canvas import (latest)**
 
 1. Feedback from the first real use: everything went through one generic page, there was no place for a course, and a pasted Canvas Modules page produced junk (titles and dates on separate lines were never paired, Canvas interface text was read as content, and "Unit 3: Lecture" was treated as the same item as "Unit 5: Lecture").
@@ -61,7 +70,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | runs in CI | runs in CI |
-| 95 Vitest tests | ✅ | runs in CI | runs in CI |
+| 101 Vitest tests | ✅ | runs in CI | runs in CI |
 | 3 Rust tests | ✅ | runs in CI | runs in CI |
 | Production frontend build | ✅ | runs in CI | runs in CI |
 | Desktop app compiles and launches | ✅ | runs in CI | runs in CI |

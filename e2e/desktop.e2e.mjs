@@ -99,6 +99,7 @@ try {
   // Semester setup with real fields.
   await click(sid, "//nav[@aria-label='Main']/button[normalize-space()='Semester setup']");
   await find(sid, "//h2[normalize-space()='Courses this semester']");
+  await fill(sid, 'Your name (for title pages)', 'Alex Student');
   await fill(sid, 'University', 'Example State University');
   await fill(sid, 'Degree or program', 'MS in Data Science');
   await click(sid, "//button[normalize-space()='Save school']");
@@ -109,16 +110,26 @@ try {
   await fill(sid, 'Last day', isoDay(30));
   await click(sid, "//button[normalize-space()='Save semester']");
   await find(sid, "//*[normalize-space()='✓ Semester saved']");
-  await fill(sid, 'Course code', 'DSC 6400');
-  await fill(sid, 'Course name', 'Data Ethics');
-  await fill(sid, 'Instructor (optional)', 'Dr. Ana Patel');
-  await click(sid, "//button[normalize-space()='Add course']");
-  await find(sid, "//*[normalize-space()='✓ DSC 6400 added']");
-  await fill(sid, 'Course code', 'STA 6166');
-  await fill(sid, 'Course name', 'Statistical Methods');
-  await fill(sid, 'Instructor (optional)', '');
-  await click(sid, "//button[normalize-space()='Add course']");
-  await find(sid, "//*[normalize-space()='✓ STA 6166 added']");
+  // Paste a Canvas "All Courses" list.
+  await wd('POST', `/session/${sid}/execute/sync`, {
+    script: `const el = document.querySelector('textarea[aria-label="Course list"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, arguments[0]);
+      el.dispatchEvent(new Event('input', { bubbles: true }));`,
+    args: [[
+      `* [${year}FA Data Ethics (DSC-6400-7AB12)](https://school.instructure.com/courses/111)`,
+      `${year}FA Data Ethics (DSC-6400-7AB12)`, `Term: ${year} Fall`,
+      `* [${year}FA Statistical Methods (STA-6166-SY01)](https://school.instructure.com/courses/222)`,
+      `${year}FA Statistical Methods (STA-6166-SY01)`, `Term: ${year} Fall`,
+    ].join('\n')],
+  });
+  await click(sid, "//button[normalize-space()='Add 2 courses']");
+  await find(sid, "//*[normalize-space()='✓ 2 courses added']");
+  await click(sid, "//button[@aria-label='Modify DSC 6400']");
+  await fill(sid, 'Instructor', 'Dr. Ana Patel');
+  await click(sid, "//li[contains(@class,'editing')]//button[normalize-space()='Save']");
+  await find(sid, "//*[normalize-space()='✓ DSC 6400 updated']");
+  await wd('POST', `/session/${sid}/execute/sync`, { script: 'window.scrollTo(0, 0)', args: [] });
+  await sleep(300);
   await shot(sid, '1-setup');
 
   // Paste the Canvas page into the course.
@@ -161,6 +172,12 @@ try {
   await click(sid, "//button[normalize-space()='Week 15: Final Research Paper']");
   await find(sid, "//h2[normalize-space()='Requirements checklist']");
   await shot(sid, '7-assignment-workspace');
+  await fill(sid, 'Paper title', 'Consent and Fairness in Data Collection');
+  await click(sid, "//button[normalize-space()='Save title']");
+  await find(sid, "//p[normalize-space()='Consent and Fairness in Data Collection']");
+  await wd('POST', `/session/${sid}/execute/sync`, { script: "document.querySelector('.paper').scrollIntoView({ block: 'center' })", args: [] });
+  await sleep(300);
+  await shot(sid, '8-title-page');
   const body = await text(sid);
   assert.match(body, /Final Research Paper/);
   console.log('PASS data persisted after restart');

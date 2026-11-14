@@ -388,3 +388,43 @@ th { font-weight: 500; color: var(--muted); font-size: 13px; }
 .trace.compact summary { margin: 0; font-size: 12px; color: var(--muted); }
 .trace.compact[open] { grid-column: 1 / -1; }
 .trace.compact[open] ul { position: absolute; right: 32px; max-width: 520px; background: var(--gray-950); border: 1px solid var(--line); padding: 8px 12px; z-index: 4; border-radius: var(--radius-sm); }
+
+/* ---------- saved sections ---------- */
+
+button.modify {
+  background: var(--olive); color: var(--lime-100); border-color: var(--olive);
+}
+button.modify:hover { background: color-mix(in srgb, var(--lime-400) 34%, var(--gray-950)); border-color: var(--lime-400); }
+.small-btn { padding: 5px 12px; font-size: 13px; }
+.wizard > li.is-saved { background: color-mix(in srgb, var(--lime-400) 4%, var(--surface)); border-color: var(--olive); }
+.saved-mark {
+  margin-left: 10px; vertical-align: middle; font-size: 12px; font-weight: 500; letter-spacing: 0;
+  padding: 2px 8px; border-radius: 2px; background: var(--lime-200); color: var(--gray-950);
+}
+.saved-values { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 20px; margin: 6px 0 16px; }
+.saved-values dt { font-size: 12px; color: var(--faint); }
+.saved-values dd { margin: 2px 0 0; font-size: 16px; color: var(--ink); }
+.saved-values dd.none { color: var(--faint); font-style: italic; font-size: 14px; }
+.wizard h3.sub { font-size: 15px; color: var(--lime-100); margin: 22px 0 4px; }
+.saved-courses { list-style: none; padding: 0; margin: 8px 0 6px; border-top: 1px solid var(--line); }
+.saved-courses li { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.saved-courses li.editing { flex-direction: column; align-items: stretch; }
+.saved-courses .course-line { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.saved-courses .course-line strong { color: var(--lime-200); font-weight: 600; }
+.saved-courses .actions { display: flex; gap: 12px; align-items: center; }
+.parsed-courses { list-style: none; padding: 0; margin: 10px 0; }
+.parsed-courses li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.parsed-courses strong { color: var(--lime-200); }
+
+/* ---------- title page preview ---------- */
+
+.paper {
+  position: relative; margin: 18px 0; width: 100%; max-width: 640px; aspect-ratio: 8.5 / 11;
+  background: #fff; color: #111; border-radius: 2px; box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+  font-family: 'Times New Roman', Times, serif; font-size: 13px; padding: 9% 11.7%;
+}
+.paper .page-no { position: absolute; top: 5%; right: 11.7%; }
+.paper .title-block { margin-top: 30%; text-align: center; line-height: 2; }
+.paper p { margin: 0; }
+.paper .bold { font-weight: 700; }
+.paper .placeholder { color: #b0552f; font-style: italic; }

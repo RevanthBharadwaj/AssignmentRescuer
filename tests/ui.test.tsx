@@ -33,12 +33,22 @@ describe('desktop UI', () => {
     expect(screen.getByRole('heading', { name: 'Courses this semester' })).toBeInTheDocument();
   });
 
-  it('saves school, semester and courses typed in setup without a review step', async () => {
+  it('saves setup sections, then shows them read only with a Modify button', async () => {
     const service = await setup();
     fireEvent.click(top('Semester setup'));
-    fireEvent.change(await screen.findByLabelText('University'), { target: { value: 'Example University' } });
+    fireEvent.change(await screen.findByLabelText('Your name (for title pages)'), { target: { value: 'Alex Student' } });
+    fireEvent.change(screen.getByLabelText('University'), { target: { value: 'Example University' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save school' }));
     expect(await screen.findByText('✓ School saved')).toBeInTheDocument();
+    // Saved: values shown as text, inputs gone, Modify offered.
+    expect(screen.queryByLabelText('University')).not.toBeInTheDocument();
+    expect(screen.getByText('Alex Student')).toBeInTheDocument();
+    const modify = screen.getAllByRole('button', { name: 'Modify' })[0];
+    expect(modify).toHaveClass('modify');
+    fireEvent.click(modify);
+    expect(screen.getByLabelText('University')).toHaveValue('Example University');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('University')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Term'), { target: { value: 'Fall' } });
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2026' } });
@@ -47,6 +57,8 @@ describe('desktop UI', () => {
     expect(screen.getByText('16 weeks.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save semester' }));
     expect(await screen.findByText('✓ Semester saved')).toBeInTheDocument();
+    expect(screen.queryByLabelText('First day')).not.toBeInTheDocument();
+    expect(screen.getByText('Aug 24, 2026 to Dec 15, 2026')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Course code'), { target: { value: 'mgt 6200' } });
     fireEvent.change(screen.getByLabelText('Course name'), { target: { value: 'Leadership Theories' } });
@@ -59,6 +71,37 @@ describe('desktop UI', () => {
 
     fireEvent.click(dock('Courses'));
     expect(await screen.findByRole('button', { name: 'Open MGT 6200' })).toBeInTheDocument();
+  });
+
+  it('adds courses from a pasted Canvas course list and lets each be modified', async () => {
+    const service = await setup();
+    fireEvent.click(top('Semester setup'));
+    fireEvent.change(await screen.findByLabelText('Course list'), { target: { value: [
+      '* [2026FA Strategic Management (BUS-610-7AB12)](https://school.instructure.com/courses/111)',
+      '2026FA Strategic Management (BUS-610-7AB12)',
+      'Term: 2026 Fall',
+      '* [2026FA Managerial Accounting (ACC-620A-SY01)](https://school.instructure.com/courses/222)',
+      'Term: 2026 Fall',
+    ].join('\n') } });
+    const found = screen.getByRole('list', { name: 'Courses found' });
+    expect(within(found).getByText('BUS 610')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 courses' }));
+    expect(await screen.findByText('✓ 2 courses added')).toBeInTheDocument();
+
+    const courses = await service.repository.listRecords('course');
+    expect(courses.map((c) => [c.fields.code, c.fields.name, c.fields.section, c.fields.semester])).toEqual([
+      ['BUS 610', 'Strategic Management', '7AB12', 'Fall 2026'],
+      ['ACC 620A', 'Managerial Accounting', 'SY01', 'Fall 2026'],
+    ]);
+    // The list's term became the semester.
+    expect((await service.onboarding()).currentSemester?.fields.name).toBe('Fall 2026');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Modify BUS 610' }));
+    fireEvent.change(screen.getByLabelText('Instructor'), { target: { value: 'Dr. Jane Doe' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('✓ BUS 610 updated')).toBeInTheDocument();
+    const bus = await service.repository.findRecordByKey('course', 'BUS 610');
+    expect(bus?.fields).toMatchObject({ instructor: 'Dr. Jane Doe', section: '7AB12', name: 'Strategic Management' });
   });
 
   it('imports a pasted Canvas modules page into a course and fills its tabs', async () => {
@@ -104,6 +147,25 @@ describe('desktop UI', () => {
     expect(await screen.findByRole('heading', { name: 'Requirements checklist' })).toBeInTheDocument();
     expect(screen.getByText(/Submit by Dec 14, 2026/)).toBeInTheDocument();
     expect(screen.getByText(/Not found in your material yet/)).toBeInTheDocument();
+  });
+
+  it("builds the title page in the student's format from setup and course details", async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    await service.saveStudent({ name: 'Alex Student' });
+    await service.addCourse({ code: 'DSC 6400', name: 'Data Ethics', instructor: 'Dr. Ana Patel' });
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
+    await approveAll(service);
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper' }));
+    const page = await screen.findByLabelText('Title page preview');
+    expect(within(page).getByText('[Paper title]')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Paper title'), { target: { value: 'Consent in Data Collection' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save title' }));
+    const lines = async () => [...(await screen.findByLabelText('Title page preview')).querySelectorAll('.title-block p')].map((p) => p.textContent);
+    await screen.findByText('Consent in Data Collection');
+    expect(await lines()).toEqual(['Consent in Data Collection', 'Alex Student', 'Example University', 'DSC-6400: Data Ethics', 'Dr. Ana Patel', 'December 14, 2026']);
   });
 
   it('shows old and new values for a changed deadline', async () => {

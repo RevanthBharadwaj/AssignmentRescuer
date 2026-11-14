@@ -31,7 +31,8 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 
 | Area | Status |
 |---|---|
-| Semester setup with real fields: school, program, term, first and last day, courses | ✅ Available |
+| Semester setup with real fields: your name, school, program, term, first and last day, courses; saved sections become read only with a Modify button | ✅ Available |
+| Canvas course list (Courses → All Courses) pasted into setup: codes, names, sections and term | ✅ Available |
 | Course pages with Timeline, Assignments, Readings and materials, and Add material tabs | ✅ Available |
 | Canvas Modules page pasted as text: items, due dates, points, units, readings, lectures, files, reminders | ✅ Available |
 | Syllabus, assignment instructions, rubric, announcement pasted as text; TXT and Markdown files | ✅ Available |
@@ -40,6 +41,7 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | Source tracing: every item keeps the exact lines it came from | ✅ Available |
 | Home: due in the next 7 days, the week after, and items still needing a date | ✅ Available |
 | Assignment workspace with a requirements checklist and a list of missing information | ✅ Available |
+| Title page in your paper format (APA 7 student), filled from setup and the course | 🧪 Experimental, preview and copy |
 | Next semester subject reminders (14 days before the semester ends, every 14 days until answered) | ✅ Available |
 | Content classification and extraction for free text | 🧪 Experimental, rule based |
 | Deadline reminders (7, 3, 1 and 0 days before) | 🧪 Experimental, shown while the app is open |
@@ -58,6 +60,8 @@ The app's own **Features** screen shows the same list, read from the registry th
 | ![Course timeline](docs/screenshots/3-course-timeline.png) | ![Readings and materials](docs/screenshots/4-course-materials.png) |
 | **Courses** — one card per course with what is next | **Assignment workspace** — checklist and what is still missing |
 | ![Courses](docs/screenshots/6-courses.png) | ![Assignment workspace](docs/screenshots/7-assignment-workspace.png) |
+| **Title page** — your paper format, filled from setup and the course | |
+| ![Title page](docs/screenshots/8-title-page.png) | |
 
 All screenshots come from the real desktop build, captured automatically by the end to end test with synthetic course data.
 
@@ -109,10 +113,10 @@ Open http://localhost:1420. The browser preview uses the same app with an in-bro
 
 ## Using the app
 
-1. **Set up your semester.** On first launch Home sends you to **Semester setup** (top bar). Enter your university and program, pick the term and year, set the first and last day of the semester, and add each course by code and name. These are saved straight away; there is nothing to review because you typed them.
+1. **Set up your semester.** On first launch Home sends you to **Semester setup** (top bar). Enter your name, university and program, pick the term and year, and set the first and last day of the semester. For courses, open **Courses → All Courses** in Canvas, copy the list and paste it into **Paste your course list**: codes, names, sections and the term are read for you. Use **Modify** on a course to add its instructor. Saved sections turn read only; press **Modify** to change them.
 2. **Fill each course from Canvas.** Open **Courses** in the bottom bar and click a course, then the **Add material** tab. In Canvas, open that course's **Modules** page, press **Cmd+A** (Windows: **Ctrl+A**) and **Cmd+C**, then paste into the box and click **Extract**. You can paste a syllabus, assignment instructions, a rubric or an announcement the same way.
 3. **Approve.** Right below, everything found is listed in groups: graded work and deadlines, readings and files, reminders. Untick anything you don't want. Projects that the course page only mentions ("Project 2 is due next week") have a date box so you can type the date before approving. Click **Approve N selected**. Open **source** on any row to see the exact lines it came from.
-4. **Use it.** The course's **Timeline** tab lists every graded item in date order, **Assignments** shows points and types, **Readings and materials** groups readings, lectures and PDFs by week. Click any assignment to open its workspace and checklist.
+4. **Use it.** The course's **Timeline** tab lists every graded item in date order, **Assignments** shows points and types, **Readings and materials** groups readings, lectures and PDFs by week. Click any assignment to open its workspace: the checklist, what is still missing, and a title page in your paper format (type the paper title once; name, university, course, instructor and date fill in).
 5. **Check Home.** Home shows what is due in the next 7 days across all courses, the week after, and anything still waiting for a date.
 6. **Keep it current.** When an instructor changes a date, paste the updated page or announcement. The app shows the old and new date side by side under **Review** and only changes it if you approve.
 7. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next.
@@ -141,7 +145,7 @@ cargo test --manifest-path src-tauri/Cargo.toml     # Rust database layer
 
 | Suite | What it covers |
 |---|---|
-| Vitest (95 tests) | Date parsing, classification, Canvas module lists, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
+| Vitest (101 tests) | Date parsing, classification, Canvas module lists, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
 | Rust (3 tests) | Atomic batches, typed results, parameter validation |
 | End to end | The real desktop build driven through WebDriver: first launch, semester setup, pasting a Canvas page into a course, approving, restart, data still there, assignment workspace |
 
@@ -200,3 +204,4 @@ The interface uses a dark studio look: a near black canvas, a lime cream accent,
 | [docs/TESTING.md](docs/TESTING.md) | Test suites and specification coverage |
 | [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) | Pushing to a GitHub account |
 | [docs/specs/universal-academic-input.md](docs/specs/universal-academic-input.md) | The feature specification |
+| [docs/specs/paper-format.md](docs/specs/paper-format.md) | The paper format the writing and export tools must produce |

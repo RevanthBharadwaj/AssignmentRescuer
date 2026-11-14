@@ -7,6 +7,7 @@ import { analyseAssignment } from '../../core/assignments/checklist';
 import { FIELD_LABELS, errorMessage, formatDate, formatValue } from '../format';
 import { SourceTrace } from './SourceTrace';
 import { ReviewList } from './ReviewList';
+import { TitlePage } from './TitlePage';
 
 const dateOf = (r: ConfirmedRecord) => ((r.fields.dueDate ?? r.fields.date ?? null) as AcademicDate | null);
 // Date first, then title, so "Question 1" comes before "Question 2" on the same day.
@@ -296,7 +297,8 @@ export function AssignmentWorkspace({ id }: { id: string }) {
   if (!record) return <p className="muted">This item no longer exists.</p>;
   const rubric = data.all.filter((r) => r.entityType === 'rubric_criterion' && r.fields.assignmentKey === record.key);
   const a = analyseAssignment(record, rubric);
-  const shown = Object.entries(record.fields).filter(([k, v]) => !['instructions', 'title'].includes(k) && v !== null);
+  const shown = Object.entries(record.fields).filter(([k, v]) => !['instructions', 'title', 'paperTitle'].includes(k) && v !== null);
+  const isPaper = ['paper', 'essay', 'report', 'reflection', 'project', 'assignment'].includes(String(record.fields.type));
   const code = String(record.fields.courseCode ?? '');
 
   return (
@@ -328,6 +330,7 @@ export function AssignmentWorkspace({ id }: { id: string }) {
         {typeof record.fields.instructions === 'string' && <details><summary>Full instructions</summary><pre className="instructions">{record.fields.instructions}</pre></details>}
         <SourceTrace provenance={record.evidence} />
       </div>
+      {isPaper && <TitlePage record={record} />}
       <div className="card muted">Research, planning, writing and APA review tools for this workspace arrive in later milestones.</div>
     </section>
   );

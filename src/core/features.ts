@@ -25,6 +25,8 @@ export const FEATURES: Feature[] = [
   { id: 'input.multiple', name: 'Multiple inputs in one import', status: 'implemented', milestone: 1, note: 'Pasted text plus several text files in one batch.' },
   { id: 'input.lms_modules', name: 'Canvas Modules page (copied text)', status: 'implemented', milestone: 1, note: 'Select all on the Modules page, copy, paste into a course. Items, dates, points, readings and files are separated.' },
   { id: 'app.setup', name: 'Semester setup with real fields', status: 'implemented', milestone: 1, note: 'School, semester dates and courses are typed once and saved straight away.' },
+  { id: 'input.course_list', name: 'Canvas course list', status: 'implemented', milestone: 1, note: 'Paste Courses → All Courses into setup; codes, names, sections and the term are read.' },
+  { id: 'writing.title_page', name: 'Title page in your paper format', status: 'experimental', milestone: 1, note: 'APA 7 student title page filled from setup and the course. Preview and copy; Word export comes with the writing milestone.' },
   { id: 'app.course_pages', name: 'Course pages', status: 'implemented', milestone: 1, note: 'Timeline, assignments, readings and materials, and add material with review inside the course.' },
   { id: 'pipeline.classification', name: 'Content classification', status: 'experimental', milestone: 1, note: 'Rule based multi label classifier. Accuracy evaluation is milestone 11.' },
   { id: 'pipeline.extraction', name: 'Academic entity extraction', status: 'experimental', milestone: 1, note: 'Deterministic parsing of dates, courses, assignments, rubrics and timelines from text.' },

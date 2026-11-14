@@ -28,6 +28,12 @@ export interface CourseInput {
   code: string;
   name: string | null;
   instructor: string | null;
+  section?: string | null;
+  url?: string | null;
+}
+
+export interface StudentProfile {
+  name: string;
 }
 
 /** Application service: the only layer the UI talks to. */
@@ -87,6 +93,14 @@ export class AcademicService {
     return this.repo.approveProposal(p.id);
   }
 
+  async student(): Promise<StudentProfile> {
+    return this.repo.getSetting<StudentProfile>('student', { name: '' });
+  }
+
+  async saveStudent(profile: StudentProfile) {
+    await this.repo.setSetting('student', { name: profile.name.trim() });
+  }
+
   async saveProfile(university: string, program: string | null) {
     const existing = (await this.repo.listRecords('university'))[0] ?? null;
     return this.saveTyped('university', { name: university.trim(), program: program?.trim() || null, academicYear: null }, existing?.id ?? null);
@@ -106,12 +120,39 @@ export class AcademicService {
     const semester = (await this.onboarding()).currentSemester;
     const code = normaliseCourseCode(input.code);
     const existing = await this.repo.findRecordByKey('course', code);
-    return this.saveTyped('course', {
+    const fields: Record<string, FieldValue> = {
       code,
       name: input.name?.trim() || null,
       instructor: input.instructor?.trim() || null,
       semester: (semester?.fields.name as string | null) ?? null,
-    }, existing?.id ?? null);
+    };
+    if (input.section !== undefined) fields.section = input.section || null;
+    if (input.url !== undefined) fields.lmsUrl = input.url || null;
+    // When updating, fields left out here keep their saved values
+    // (correctRecord merges into the existing record).
+    return this.saveTyped('course', fields, existing?.id ?? null);
+  }
+
+  /**
+   * Add several courses at once (for example a pasted Canvas course list).
+   * When no semester is set yet, the list's term becomes the semester name.
+   */
+  async addCourses(list: { code: string; name: string | null; section: string | null; term: string | null; url: string | null }[]) {
+    const current = (await this.onboarding()).currentSemester;
+    const term = list.find((c) => c.term)?.term ?? null;
+    if (!current && term) await this.saveSemester({ name: term, start: null, end: null });
+    const saved = [];
+    for (const c of list) {
+      const existing = await this.repo.findRecordByKey('course', normaliseCourseCode(c.code));
+      saved.push(await this.addCourse({
+        code: c.code,
+        name: c.name,
+        instructor: (existing?.fields.instructor as string | null) ?? null,
+        section: c.section,
+        url: c.url,
+      }));
+    }
+    return saved;
   }
 
   async removeCourse(id: string) {
