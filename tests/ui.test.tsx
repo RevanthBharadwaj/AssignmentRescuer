@@ -25,7 +25,7 @@ vi.mock('../src/ui/aiClient', () => ({
   embedAi: async (_m: string, _u: string, t: string[]) => t.map(() => [1, 0]),
   describeImage: async () => 'Week 1 Reading due Friday, 20 points',
 }));
-vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
+vi.mock('../src/ui/notifier', () => ({ sendEmail: async () => undefined, notifyDesktop: async () => undefined }));
 import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
 
 afterEach(cleanup);

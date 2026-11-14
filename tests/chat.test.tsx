@@ -13,7 +13,7 @@ vi.mock('../src/ui/aiClient', () => ({
 }));
 const saved: { name: string; size: number }[] = [];
 vi.mock('../src/ui/exporter', () => ({ saveDocx: async (name: string, bytes: Uint8Array) => { saved.push({ name, size: bytes.length }); return `Downloads/${name}`; } }));
-vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
+vi.mock('../src/ui/notifier', () => ({ sendEmail: async () => undefined, notifyDesktop: async () => undefined }));
 vi.mock('../src/ui/scholarClient', () => ({
   scholarGet: async (url: string) => {
     if (url.includes('openalex')) return JSON.stringify({ results: [] });
@@ -66,18 +66,21 @@ describe('unit blocks and chat', () => {
     expect(await screen.findByText(/Turn on the AI/)).toBeInTheDocument();
   });
 
-  it('finds a real source, saves its APA reference with the assignment and lets the chat cite only that', async () => {
+  it('uses the find sources tool from chat, saves the APA reference and lets the chat cite only that', async () => {
     const service = await setup();
+    await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
     const a = (await service.repository.listRecords('assignment'))[0];
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
     fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
     fireEvent.change(screen.getByLabelText('Working on'), { target: { value: a.id } });
-    fireEvent.click(screen.getByText('Find real sources and APA references'));
-    fireEvent.change(screen.getByLabelText('Search sources'), { target: { value: 'learning habits seminars' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(screen.queryByText('Find real sources and APA references')).toBeNull();
+    expect(screen.getByLabelText('Tools the chat can use')).toHaveTextContent('Find sources');
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'find sources on learning habits seminars' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/Find sources: 1 found for "learning habits seminars"/)).toBeInTheDocument();
     expect(await screen.findByText(/\(Rivera, 2021\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save with this assignment' }));
-    expect(await screen.findByText('Saved for this assignment')).toBeInTheDocument();
+    expect(await screen.findByText(/Sources saved for this assignment \(1\)/)).toBeInTheDocument();
     const refs = await service.referencesFor(a.key);
     expect(refs).toHaveLength(1);
     expect(String(refs[0].fields.summary)).toBe('Rivera, M. (2021). Learning Habits in Online Seminars. Journal of Example Studies, 12(3), 45–67. https://doi.org/10.9999/example.101');

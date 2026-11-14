@@ -9,7 +9,10 @@ import { guessIntent, modelFor, modelLabel } from '../../core/models';
 import { readFileBytes } from './AddInfo';
 import { errorMessage } from '../format';
 import { Hint } from './Guide';
-import { SourceFinder } from './SourceFinder';
+import { FoundSources, SavedSources } from './References';
+import { scholarGet } from '../scholarClient';
+import { pickTools, TOOLS, toolInfo } from '../../core/tools';
+import type { ToolResult } from '../../core/service';
 import { buildDocx, docFileName } from '../../core/docxWriter';
 import { saveDocx } from '../exporter';
 import { titlePageLines } from './TitlePage';
@@ -121,11 +124,13 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const roleName = (t: 'assignment' | 'general') => (t === 'assignment' ? 'assignment model' : 'everyday model');
 
   /** One model written answer, with the model named while it works and on the reply. */
-  const answer = async (list: ChatMessage[], prompt: string, task: 'assignment' | 'general') => {
+  const answer = async (list: ChatMessage[], prompt: string, task: 'assignment' | 'general', used: ToolResult[] = []) => {
     const tag = modelFor(base.ai, task === 'assignment' ? 'writing' : 'chat');
     setBusy(`${task === 'assignment' ? 'Working on your assignment' : 'Thinking'} with ${modelLabel(tag)}`);
-    const r = await service.chatReply(key, code || null, assignmentId || null, prompt, completeAi, today, { task, embed: embedAi });
-    const next = [...list, msg({ role: 'assistant', content: r.text.trim(), model: r.model, task: r.task })];
+    const r = await service.chatReply(key, code || null, assignmentId || null, prompt, completeAi, today, { task, embed: embedAi, tools: used });
+    const shown = [...used.map((t) => ({ id: t.id, label: t.label, note: t.note })), ...(r.passages ? [{ id: 'search_material', label: toolInfo('search_material').label, note: `${r.passages} passage${r.passages === 1 ? '' : 's'}, by ${r.search === 'meaning' ? 'meaning' : 'keywords'}` }] : [])];
+    const works = used.flatMap((t) => t.works ?? []);
+    const next = [...list, msg({ role: 'assistant', content: r.text.trim(), model: r.model, task: r.task, tools: shown.length ? shown : undefined, works: works.length ? works : undefined })];
     await push(next);
     return next;
   };
@@ -185,7 +190,15 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         await intake(list, target, { text: input }, intent);
       } else {
         const task = override ? 'assignment' : assignmentId ? 'assignment' : decided ? decided : guessIntent(input, titles) === 'assignment' ? 'assignment' : 'general';
-        await answer(list, input, task as 'assignment' | 'general');
+        const used: ToolResult[] = [];
+        if (!override) {
+          for (const call of pickTools(input, focus ? String(focus.fields.title) : null)) {
+            setBusy(`Using ${toolInfo(call.id).label}…`);
+            try { used.push(await service.runTool(call, { code: code || null, today, fetcher: scholarGet })); }
+            catch (e) { used.push({ id: call.id, label: toolInfo(call.id).label, note: 'Could not run', text: `The ${toolInfo(call.id).label} tool failed: ${errorMessage(e)}. Tell the student it did not work and what to try.` }); }
+          }
+        }
+        await answer(list, input, task as 'assignment' | 'general', used);
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -235,7 +248,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
       <header className="chat-head">
         <div>
           <h1 id="chat-title">Chat</h1>
-          <p className="muted small">Ask about your courses, or paste anything copied from Canvas. I sort it into the right course and keep it ready for your assignment.</p>
+          <p className="muted small">Your study assistant. It answers from the courses and assignments you saved, and uses tools when a question needs them.</p>
         </div>
         <span className={`chat-ai ${ready ? 'on' : 'off'}`}>
           {ready ? `Everyday: ${modelLabel(modelFor(base.ai, 'chat'))} · Assignments: ${modelLabel(modelFor(base.ai, 'writing'))}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
@@ -259,6 +272,12 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         {messages.length > 0 && <button type="button" className="link" onClick={async () => { await service.clearChat(key); setMessages([]); }}>clear this chat</button>}
       </div>
 
+      <div className="chat-tools" aria-label="Tools the chat can use">
+        <span className="muted small">Tools</span>
+        {TOOLS.map((t) => <span key={t.id} className="tool-chip" tabIndex={0} title={`${t.what} ${t.where}`}>{t.label}</span>)}
+        {assignmentId && <SavedSources assignmentId={assignmentId} />}
+      </div>
+
       <div className="chat-log" role="log" aria-live="polite" aria-label="Conversation">
         {messages.length === 0 && (
           <div className="chat-empty">
@@ -266,6 +285,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
             <ul>
               <li>Paste an announcement. I will save it once and tell you what it asks you to do.</li>
               <li>Choose an assignment above, then ask what you need to read and how it is scored.</li>
+              <li>Ask "what is due this week?" or "find sources on servant leadership". I use a tool and show you what it found.</li>
               <li>Paste your own notes and ask me to turn them into a clean draft.</li>
             </ul>
           </div>
@@ -280,6 +300,8 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
               </div>
             )}
             {m.role === 'assistant' && m.model && <div className="model-caption muted small">{modelLabel(m.model)} · {roleName(m.task ?? 'general')}</div>}
+            {m.tools && m.tools.length > 0 && <div className="tool-used muted small">{m.tools.map((t) => <span key={t.id} className="tool-chip" title={toolInfo(t.id as never).what}>{t.label}: {t.note}</span>)}</div>}
+            {m.works && m.works.length > 0 && <FoundSources works={m.works} assignmentId={assignmentId} />}
             {m.kind === 'intake' && m.proposalIds && m.proposalIds.length > 0 && <ProposalCard ids={m.proposalIds} />}
             {m.role === 'assistant' && !m.kind && m.model && (
               <div className="bubble-actions">
@@ -294,34 +316,35 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         <div ref={end} />
       </div>
 
-      <SourceFinder assignmentId={assignmentId} />
-      {error && <p role="alert" className="error">{error}</p>}
-      {material && <p className="chat-hint small">This looks like course material. It will be sorted into {code || 'the matching course'} and saved once. <button type="button" className="link" onClick={() => setAsQuestion(true)}>send it as a question instead</button></p>}
-      {focus && (
-        <div className="chat-write">
-          <button type="button" disabled={busy !== null || !ready} onClick={() => void send({ prompt: WRITE_PROMPT, shown: `Write ${String(focus.fields.title)} as a document` })}>Write this assignment as a document</button>
-          <label className="inline"><input type="checkbox" checked={titlePageOn} onChange={(e) => setTitlePageOn(e.target.checked)} /> Include an APA title page</label>
-          <span className="muted small">Uses your notes, the brief and your saved sources. Download it as Word from the answer.</span>
+      <div className="chat-dock">
+        {error && <p role="alert" className="error">{error}</p>}
+        {material && <p className="chat-hint small">This looks like course material. It will be sorted into {code || 'the matching course'} and saved once. <button type="button" className="link" onClick={() => setAsQuestion(true)}>send it as a question instead</button></p>}
+        {focus && (
+          <div className="chat-write">
+            <button type="button" disabled={busy !== null || !ready} onClick={() => void send({ prompt: WRITE_PROMPT, shown: `Write ${String(focus.fields.title)} as a document` })}>Write this assignment as a document</button>
+            <label className="inline"><input type="checkbox" checked={titlePageOn} onChange={(e) => setTitlePageOn(e.target.checked)} /> Include an APA title page</label>
+            <span className="muted small">Uses your notes, the brief and your saved sources. Download it as Word from the answer.</span>
+          </div>
+        )}
+        <div className="chat-compose">
+          <textarea
+            aria-label="Message"
+            rows={3}
+            value={text}
+            placeholder={focus ? `Ask about ${String(focus.fields.title)}, or paste notes to polish…` : 'Ask a question, or paste something from Canvas…'}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}
+          />
+          <div className="chat-buttons">
+            <label className="attach secondary-label" title="Attach a PDF, Word file, text file or screenshot">
+              Attach
+              <input type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} aria-label="Attach files" />
+            </label>
+            <button type="button" className="chat-send" disabled={busy !== null || !text.trim()} onClick={() => void send()}>Send</button>
+          </div>
         </div>
-      )}
-      <div className="chat-compose">
-        <textarea
-          aria-label="Message"
-          rows={3}
-          value={text}
-          placeholder={focus ? `Ask about ${String(focus.fields.title)}, or paste notes to polish…` : 'Ask a question, or paste something from Canvas…'}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}
-        />
-        <div className="chat-buttons">
-          <label className="attach secondary-label" title="Attach a PDF, Word file, text file or screenshot">
-            Attach
-            <input type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} aria-label="Attach files" />
-          </label>
-          <button type="button" className="chat-send" disabled={busy !== null || !text.trim()} onClick={() => void send()}>Send</button>
-        </div>
+        <p className="muted small">Cmd+Enter (Ctrl+Enter on Windows) sends. Answers come from your saved material; check anything you will submit.</p>
       </div>
-      <p className="muted small">Cmd+Enter (Ctrl+Enter on Windows) sends. Answers come from your saved material; check anything you will submit.</p>
     </section>
   );
 }

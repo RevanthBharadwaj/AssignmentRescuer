@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 13: structured syllabus, models per job, walkthrough (latest)**
+**Update 14: email reminders, chat tools, pinned message box (latest)**
+
+1. Reminders go by email from the student's own Gmail account (SMTP with an app password in the keychain) instead of text messages; Twilio is removed. The subject names the assignment, course and professor and the body is short bullets. One email covers a whole day.
+2. The source search panel is gone. The chat now uses tools picked by simple rules: search saved material, what is due, find sources, check a DOI. Each reply shows the tools it used and any sources found, with Save buttons.
+3. The chat message box stays at the bottom while the conversation scrolls.
+4. 187 Vitest tests and 12 Rust tests pass. Email sending was not tried against real Gmail from the sandbox.
+
+**Update 13: structured syllabus, models per job, walkthrough**
 
 1. The syllabus tab now shows grouped, whole sections instead of one card per short line (checked on a real syllabus, not committed). "Organize with AI" saves a summary, key facts and easy to miss rules.
 2. Four model jobs: everyday, assignment, image and search. Images are read by a local vision model and never uploaded; search by meaning uses a local embedding model and falls back to keywords. Every chat reply names its model. Pastes the chat is unsure about are confirmed with the student first.

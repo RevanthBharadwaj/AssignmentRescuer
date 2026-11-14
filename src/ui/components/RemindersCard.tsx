@@ -4,13 +4,12 @@ import { useAsync } from '../useAsync';
 import type { PushSettings } from '../../core/schedule';
 import { prettyDate } from '../../core/schedule';
 import { hasSecret, setSecret } from '../aiClient';
-import { notifyDesktop, sendSms } from '../notifier';
+import { notifyDesktop, sendEmail } from '../notifier';
 import { errorMessage } from '../format';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => ({ h, label: `${h % 12 === 0 ? 12 : h % 12}:00 ${h >= 12 ? 'PM' : 'AM'}` }));
-const mask = (p: string) => (p.replace(/\D/g, '').length >= 4 ? `•••• ${p.replace(/\D/g, '').slice(-4)}` : p);
 
-/** Semester setup step 06: where and when reminders go. The phone number stays on this computer. */
+/** Semester setup step 06: where and when reminders go. Addresses stay on this computer; the app password is kept in the keychain. */
 export function RemindersCard() {
   const { service, version, refresh, today, toast } = useApp();
   const { data } = useAsync(async () => {
@@ -18,7 +17,7 @@ export function RemindersCard() {
     const plan = await service.reminderPlan();
     const next = plan.find((r) => r.sendOn >= today);
     const day = next ? plan.filter((r) => r.sendOn === next.sendOn) : [];
-    return { s, hasToken: await hasSecret('twilio'), nextDay: next?.sendOn ?? null, preview: day.length ? await service.messagesFor(day) : [] };
+    return { s, hasToken: await hasSecret('gmail'), nextDay: next?.sendOn ?? null, email: day.length ? await service.emailFor(day) : null, notice: day.length ? (await service.messagesFor(day))[0] ?? null : null };
   }, [version, today]);
   const [draft, setDraft] = useState<PushSettings | null>(null);
   const [editing, setEditing] = useState(false);
@@ -28,12 +27,12 @@ export function RemindersCard() {
   if (!data) return null;
   const s = draft ?? data.s;
   const set = (patch: Partial<PushSettings>) => setDraft({ ...s, ...patch });
-  const configured = data.s.enabled && (data.s.sms || data.s.desktop);
+  const configured = data.s.enabled && ((data.s.mail && !!data.s.gmail) || data.s.desktop);
 
-  const preview = data.nextDay && data.preview.length > 0 && (
+  const preview = data.nextDay && data.email && (
     <details className="reminder-preview">
-      <summary>Preview the next reminder ({prettyDate(data.nextDay)})</summary>
-      {data.preview.map((m, i) => <pre key={i}>{m}</pre>)}
+      <summary>Preview the next reminder email ({prettyDate(data.nextDay)})</summary>
+      <pre>{`Subject: ${data.email.subject}\n\n${data.email.body}`}</pre>
     </details>
   );
 
@@ -42,7 +41,7 @@ export function RemindersCard() {
       <>
         <dl className="saved-values">
           <div><dt>Reminders</dt><dd>On, every day at {HOURS[data.s.hour].label}</dd></div>
-          <div><dt>Channels</dt><dd>{[data.s.desktop && 'Desktop notification', data.s.sms && `Text to ${mask(data.s.phone)}`].filter(Boolean).join(' and ')}</dd></div>
+          <div><dt>Channels</dt><dd>{[data.s.desktop && 'Desktop notification', data.s.mail && `Email to ${data.s.email || data.s.gmail}`].filter(Boolean).join(' and ')}</dd></div>
         </dl>
         <p className="muted small">Day before and day of; every day for five days before big work; the first discussion post gets its own reminder. They go out while this app is open.</p>
         {preview}
@@ -54,14 +53,13 @@ export function RemindersCard() {
   const save = async () => {
     setError(null);
     try {
-      if (s.enabled && s.sms) {
-        if (s.phone.replace(/\D/g, '').length < 10) throw new Error('Enter the phone number to text, with area code.');
-        if (!s.twilioSid.trim().startsWith('AC')) throw new Error('Enter your Twilio Account SID (it starts with AC).');
-        if (!s.twilioFrom.trim()) throw new Error('Enter your Twilio phone number (the one texts are sent from).');
-        if (token.trim()) await setSecret('twilio', token.trim());
-        else if (!data.hasToken) throw new Error('Paste your Twilio auth token.');
+      if (s.enabled && s.mail) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.gmail.trim())) throw new Error('Enter the Gmail address to send from.');
+        if (s.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())) throw new Error('The address to send to does not look right.');
+        if (token.trim()) await setSecret('gmail', token.trim());
+        else if (!data.hasToken) throw new Error('Paste your Gmail app password.');
       }
-      await service.savePushSettings({ ...s, twilioSid: s.twilioSid.trim(), twilioFrom: s.twilioFrom.trim(), phone: s.phone.trim() });
+      await service.savePushSettings({ ...s, name: s.name.trim(), gmail: s.gmail.trim(), email: s.email.trim() });
       setToken('');
       setDraft(null);
       setEditing(false);
@@ -75,13 +73,13 @@ export function RemindersCard() {
     setTesting(true);
     setError(null);
     try {
-      const sample = data.preview[0] ?? 'Assignment Rescue\nThis is a test reminder. Real ones will show your course, teacher, assignment and what to do.';
-      if (s.sms) {
-        if (token.trim()) await setSecret('twilio', token.trim());
-        await sendSms(s.twilioSid.trim(), s.twilioFrom.trim(), s.phone.trim(), `TEST\n${sample}`);
-        toast('Test text sent');
+      if (s.mail) {
+        if (token.trim()) await setSecret('gmail', token.trim());
+        const sample = data.email ?? { subject: 'Test reminder from Assignment Rescue', body: `Hi${s.name.trim() ? ` ${s.name.trim()}` : ''},\n\nThis is a test. Real reminders list the assignment, course, professor and due date.\n` };
+        await sendEmail(s.gmail.trim(), s.email.trim() || s.gmail.trim(), `TEST: ${sample.subject}`, sample.body);
+        toast('Test email sent');
       } else {
-        await notifyDesktop('Assignment Rescue', sample.split('\n').slice(1).join('\n').slice(0, 220));
+        await notifyDesktop('Assignment Rescue', (data.notice ?? 'Assignment Rescue\nThis is a test reminder.').split('\n').slice(1).join('\n').slice(0, 220));
         toast('Test notification sent');
       }
     } catch (e) {
@@ -105,31 +103,41 @@ export function RemindersCard() {
                 {HOURS.map((x) => <option key={x.h} value={x.h}>{x.label}</option>)}
               </select>
             </label>
-            <label>Phone number to text
-              <input type="tel" value={s.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="10 digits" autoComplete="off" />
+            <label>Your first name (for the greeting)
+              <input value={s.name} onChange={(e) => set({ name: e.target.value })} placeholder="Revanth" autoComplete="off" />
             </label>
           </div>
           <label className="consent"><input type="checkbox" checked={s.desktop} onChange={(e) => set({ desktop: e.target.checked })} /><span>Desktop notification</span></label>
-          <label className="consent"><input type="checkbox" checked={s.sms} onChange={(e) => set({ sms: e.target.checked })} /><span>Text message through my Twilio account (a Twilio trial is free but can only text numbers you verify there)</span></label>
-          {s.sms && (
-            <div className="grid">
-              <label>Twilio Account SID<input value={s.twilioSid} onChange={(e) => set({ twilioSid: e.target.value })} placeholder="AC…" autoComplete="off" spellCheck={false} /></label>
-              <label>Twilio phone number (from)<input type="tel" value={s.twilioFrom} onChange={(e) => set({ twilioFrom: e.target.value })} placeholder="+1…" autoComplete="off" /></label>
-              <label>Twilio auth token {data.hasToken ? '(saved; paste a new one to replace it)' : ''}
-                <input type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" spellCheck={false} />
-              </label>
-            </div>
+          <label className="consent"><input type="checkbox" checked={s.mail} onChange={(e) => set({ mail: e.target.checked })} /><span>Email, sent from my own Gmail account (free)</span></label>
+          {s.mail && (
+            <>
+              <div className="grid">
+                <label>Gmail address to send from<input type="email" value={s.gmail} onChange={(e) => set({ gmail: e.target.value })} placeholder="you@gmail.com" autoComplete="off" spellCheck={false} /></label>
+                <label>Send reminders to (leave empty for the same address)<input type="email" value={s.email} onChange={(e) => set({ email: e.target.value })} placeholder="optional" autoComplete="off" spellCheck={false} /></label>
+                <label>Gmail app password {data.hasToken ? '(saved; paste a new one to replace it)' : ''}
+                  <input type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" spellCheck={false} placeholder="16 letters" />
+                </label>
+              </div>
+              <details className="reminder-preview">
+                <summary>How do I get an app password?</summary>
+                <ol className="small">
+                  <li>In your Google account, open Security and turn on 2-Step Verification.</li>
+                  <li>Go to myaccount.google.com/apppasswords and create one named Assignment Rescue.</li>
+                  <li>Copy the 16 letters Google shows and paste them above. Spaces are fine. It is not your normal Gmail password, and you can delete it any time.</li>
+                </ol>
+              </details>
+            </>
           )}
           {preview}
         </>
       )}
       <div className="row">
         <button type="button" onClick={save}>Save reminder settings</button>
-        {s.enabled && (s.sms || s.desktop) && <button type="button" className="secondary" disabled={testing} onClick={test}>{testing ? 'Sending…' : s.sms ? 'Send a test text' : 'Send a test notification'}</button>}
+        {s.enabled && (s.mail || s.desktop) && <button type="button" className="secondary" disabled={testing} onClick={test}>{testing ? 'Sending…' : s.mail ? 'Send a test email' : 'Send a test notification'}</button>}
         {editing && <button type="button" className="secondary" onClick={() => { setDraft(null); setEditing(false); setError(null); }}>Cancel</button>}
       </div>
       {error && <p role="alert" className="error">{error}</p>}
-      <p className="muted small">Reminders go out while this app is open on your computer. Your phone number and Twilio details stay on this computer; the auth token is kept in your keychain.</p>
+      <p className="muted small">Reminders go out while this app is open on your computer. Your email addresses stay on this computer; the app password is kept in your keychain.</p>
     </>
   );
 }

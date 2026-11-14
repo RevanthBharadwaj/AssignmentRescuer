@@ -5,7 +5,7 @@ import { App } from '../src/ui/App';
 
 vi.mock('../src/ui/feedFetcher', async () => ({ fetchFeed: async () => '' }));
 vi.mock('../src/ui/aiClient', () => ({ completeAi: async () => '{}', hasSecret: async () => false, setSecret: async () => undefined, embedAi: async () => [], describeImage: async () => '' }));
-vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
+vi.mock('../src/ui/notifier', () => ({ sendEmail: async () => undefined, notifyDesktop: async () => undefined }));
 import { makeService } from './helpers';
 
 afterEach(cleanup);

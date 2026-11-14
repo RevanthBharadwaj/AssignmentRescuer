@@ -40,17 +40,20 @@ export interface Reminder {
 
 export interface PushSettings {
   enabled: boolean;
-  /** Where to send texts. Stays on this computer. */
-  phone: string;
-  sms: boolean;
+  /** How the email greets the student. Stays on this computer. */
+  name: string;
+  /** The Gmail address reminders are sent from. */
+  gmail: string;
+  /** Where to send them. Empty means the same Gmail address. */
+  email: string;
+  /** Send reminder emails. */
+  mail: boolean;
   desktop: boolean;
   /** Hour of day (0 to 23, local time) when reminders go out. */
   hour: number;
-  twilioSid: string;
-  twilioFrom: string;
 }
 
-export const DEFAULT_PUSH: PushSettings = { enabled: false, phone: '', sms: false, desktop: true, hour: 9, twilioSid: '', twilioFrom: '' };
+export const DEFAULT_PUSH: PushSettings = { enabled: false, name: '', gmail: '', email: '', mail: false, desktop: true, hour: 9 };
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -65,7 +68,7 @@ export function prettyDate(iso: string): string {
   return `${WEEKDAYS[weekdayOf(iso)].slice(0, 3)} ${MONTHS[m - 1]} ${d}`;
 }
 
-function prettyTime(hhmm: string | null): string {
+export function prettyTime(hhmm: string | null): string {
   if (!hhmm) return '';
   const [h, m] = hhmm.split(':').map(Number);
   return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
@@ -158,7 +161,7 @@ function oneLine(s: string, n: number): string {
   return t.length <= n ? t : `${t.slice(0, n - 1).replace(/\s+\S*$/, '')}…`;
 }
 
-/** The text message for one day: grouped by course, short, with a line of context per item. */
+/** The desktop notification text for one day: grouped by course, short, with a line of context per item. */
 export function formatDigest(reminders: Reminder[], courses: Record<string, CourseInfo>, contextFor: (m: Milestone) => string | null): string[] {
   const byCourse = new Map<string, Reminder[]>();
   for (const r of reminders) byCourse.set(r.milestone.courseCode, [...(byCourse.get(r.milestone.courseCode) ?? []), r]);
@@ -181,4 +184,38 @@ export function formatDigest(reminders: Reminder[], courses: Record<string, Cour
     messages.push(`Assignment Rescue\n${header}\n\n${lines.join('\n\n')}`);
   }
   return messages;
+}
+
+/* ---------- email ---------- */
+
+export interface Email { subject: string; body: string }
+
+function dueWord(n: number, kind: Milestone['kind']): string {
+  const what = kind === 'initial_post' ? 'first post due' : 'due';
+  return n === 0 ? `${what} today` : n === 1 ? `${what} tomorrow` : `${what} in ${n} days`;
+}
+
+/**
+ * One email for a day's reminders. The subject names the assignment, course and
+ * professor; the body lists each one as short bullets. No nagging about next steps.
+ */
+export function formatEmail(reminders: Reminder[], courses: Record<string, CourseInfo>, name: string): Email | null {
+  if (!reminders.length) return null;
+  const list = [...reminders].sort((a, b) => a.milestone.date.localeCompare(b.milestone.date) || a.milestone.title.localeCompare(b.milestone.title));
+  const who = (r: Reminder) => [r.milestone.courseCode, courses[r.milestone.courseCode]?.instructor].filter(Boolean).join(', ');
+  const first = list[0];
+  const lead = `${first.milestone.title} ${dueWord(first.daysBefore, first.milestone.kind)}${who(first) ? ` (${who(first)})` : ''}`;
+  const subject = list.length === 1 ? lead : `${list.length} due soon: ${lead} and ${list.length - 1} more`;
+  const items = list.map((r) => {
+    const m = r.milestone;
+    const info = courses[m.courseCode];
+    const when = `${prettyDate(m.date)}${m.time ? `, ${prettyTime(m.time)}${m.timeZone ? ` ${m.timeZone}` : ''}` : ''}`;
+    return [
+      `• Assignment: ${m.title}`,
+      `• Course: ${[m.courseCode, info?.name].filter(Boolean).join(' ')}`,
+      info?.instructor ? `• Professor: ${info.instructor}` : '',
+      `• ${m.kind === 'initial_post' ? 'First post due' : 'Due'}: ${when}`,
+    ].filter(Boolean).join('\n');
+  });
+  return { subject, body: `Hi${name.trim() ? ` ${name.trim()}` : ''},\n\n${items.join('\n\n')}\n` };
 }

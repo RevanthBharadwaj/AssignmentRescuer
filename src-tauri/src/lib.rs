@@ -23,7 +23,7 @@ pub fn run() {
             app.manage(database);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db::db_batch, db::db_select, feed::fetch_calendar_feed, ai::ai_complete, ai::ai_describe_image, ai::ai_embed, ai::ai_set_key, ai::ai_has_key, notify::send_sms, scholar::scholar_get, export::save_download, notify::notify_desktop])
+        .invoke_handler(tauri::generate_handler![db::db_batch, db::db_select, feed::fetch_calendar_feed, ai::ai_complete, ai::ai_describe_image, ai::ai_embed, ai::ai_set_key, ai::ai_has_key, notify::send_email, scholar::scholar_get, export::save_download, notify::notify_desktop])
         .run(tauri::generate_context!())
         .expect("error while running Assignment Rescue AI");
 }

@@ -1,6 +1,7 @@
 import type { ImportResult } from './pipeline';
 import { MATERIAL_LABELS, sourceKind } from './courseContent';
 import type { ChatTurn } from './ai';
+import type { Work } from './scholar';
 import { wrapAsUntrustedData } from './security/untrusted';
 
 /**
@@ -22,6 +23,10 @@ export interface ChatMessage extends ChatTurn {
   task?: 'assignment' | 'general';
   /** A pasted message waiting for the student to say whether it is about an assignment. */
   pending?: string;
+  /** Tools used to write an assistant reply, shown under it. */
+  tools?: { id: string; label: string; note: string }[];
+  /** Sources a tool found, shown as APA references the student can save. */
+  works?: Work[];
 }
 
 export function looksLikeMaterial(text: string): boolean {
@@ -66,6 +71,7 @@ export const CHAT_RULES = [
   'When the student pastes notes or a draft: improve clarity and structure while keeping their meaning, facts and voice. Do not add claims they did not make. Say in two or three short lines what you changed.',
   'When something the assignment needs is missing from the material, say what is missing and where in Canvas or the syllabus to find it.',
   'Answer in plain conversational prose. Be direct and specific.',
+  'If TOOL RESULTS are provided, they were just fetched for this question: answer from them first and do not contradict them. Sources listed there are real records; present them as given and never add details they do not show.',
   'When asked to write a paper, response or other document, write the complete text ready to submit as markdown: # for the title, ## for headings, plain paragraphs, and a final # References section listing only saved sources in APA 7. The student can download it as a Word document, so do not add commentary inside the document; put any notes after it, separated by a line with three dashes.',
 ].join('\n');
 
@@ -82,6 +88,8 @@ export interface ChatContext {
   references?: string[];
   /** Passages of the student's saved material found for this question. */
   passages?: string[];
+  /** What tools returned for this question. */
+  tools?: string[];
 }
 
 export function chatSystem(c: ChatContext, nonce: string): string {
@@ -91,6 +99,7 @@ export function chatSystem(c: ChatContext, nonce: string): string {
     c.grading ? `GRADING\n${c.grading}` : '',
     c.upcoming ? `COMING UP\n${c.upcoming}` : '',
     c.focus ? `FOCUS ASSIGNMENT: ${c.focus.title}\n${c.focus.brief}` : '',
+    c.tools?.length ? `TOOL RESULTS\n${c.tools.join('\n\n')}` : '',
     c.passages?.length ? `RELEVANT PASSAGES FROM THE STUDENT'S SAVED MATERIAL\n${c.passages.join('\n---\n')}` : '',
     c.references?.length ? `VERIFIED SOURCES (found in Crossref or OpenAlex; cite only these, in APA 7, and tell the student when a claim needs a source they have not saved)\n${c.references.join('\n')}` : '',
   ].filter(Boolean).join('\n\n');

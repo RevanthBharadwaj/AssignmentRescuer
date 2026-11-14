@@ -11,7 +11,7 @@ export const completeAi: Completer = async (req) => {
   });
 };
 
-export type KeyKind = 'anthropic' | 'openai' | 'twilio';
+export type KeyKind = 'anthropic' | 'openai' | 'gmail';
 
 export async function setSecret(kind: KeyKind, key: string | null): Promise<void> {
   if (!isTauri()) throw new Error('Keys are stored by the desktop app.');

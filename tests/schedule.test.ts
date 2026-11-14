@@ -51,7 +51,7 @@ describe('reminders', () => {
     const { service } = await course();
     const at = (h: number) => new Date(2026, 9, 21, h, 5);
     expect((await service.dueNow(at(10), '2026-10-21')).reminders).toEqual([]); // off by default
-    await service.savePushSettings({ ...(await service.pushSettings()), enabled: true, phone: '9135550123', hour: 9 });
+    await service.savePushSettings({ ...(await service.pushSettings()), enabled: true, mail: true, gmail: 'revanth@gmail.com', hour: 9 });
     expect((await service.dueNow(at(8), '2026-10-21')).reminders).toEqual([]); // before 9
     const now = await service.dueNow(at(10), '2026-10-21');
     expect(now.reminders.map((r) => `${r.milestone.title}|${r.daysBefore}`).sort()).toEqual([
@@ -119,5 +119,44 @@ describe('unit blocks', () => {
     expect(u.map((x) => [x.label, x.graded.length, x.points, x.state])).toEqual([['Unit 1', 1, 20, 'overdue'], ['Unit 2', 2, 140, 'current']]);
     expect(u[1].nextDue).toBe('2026-10-24');
     expect((await service.units('MGT 6200', '2026-10-18')).length).toBe(2);
+  });
+});
+
+describe('reminder email', () => {
+  it('names the assignment, course and professor in the subject and lists bullets in the body', async () => {
+    const { service } = await course();
+    await service.savePushSettings({ ...(await service.pushSettings()), enabled: true, mail: true, gmail: 'revanth@gmail.com', name: 'Revanth', hour: 9 });
+    const now = await service.dueNow(new Date(2026, 9, 21, 10, 0), '2026-10-21');
+    expect(now.email?.subject).toBe('2 due soon: Unit 2: Discussion Question first post due today (MGT 6200, Dr. Rivera) and 1 more');
+    expect(now.email?.body).toContain('Hi Revanth,');
+    expect(now.email?.body).toContain('• Assignment: Unit 2: Writing Assignment');
+    expect(now.email?.body).toContain('• Course: MGT 6200 Applied Leadership');
+    expect(now.email?.body).toContain('• Professor: Dr. Rivera');
+    expect(now.email?.body).toMatch(/• Due: Sat Oct 24, 11:59 PM/);
+    expect(now.email?.body).not.toMatch(/next step/i);
+  });
+
+  it('sends no email unless email reminders are on, and drops old text message settings', async () => {
+    const { service, repo } = await course();
+    await service.savePushSettings({ ...(await service.pushSettings()), enabled: true, mail: false, hour: 9 });
+    expect((await service.dueNow(new Date(2026, 9, 21, 10, 0), '2026-10-21')).email).toBeNull();
+    await repo.setSetting('push', { enabled: true, phone: '9135550123', sms: true, twilioSid: 'AC1', mail: true, gmail: 'a@gmail.com' });
+    const s = await service.pushSettings();
+    expect(s).toMatchObject({ mail: true, gmail: 'a@gmail.com', desktop: true });
+    expect(s).not.toHaveProperty('phone');
+    expect(s).not.toHaveProperty('twilioSid');
+  });
+});
+
+describe('chat whats_due tool', () => {
+  it('lists what is due on the day with course and professor', async () => {
+    const { service } = await course();
+    const r = await service.runTool({ id: 'whats_due', arg: 'what is due today' }, { code: null, today: '2026-10-21', fetcher: async () => '' });
+    expect(r.note).toBe('1 due today');
+    expect(r.text).toContain('Unit 2: Discussion Question');
+    expect(r.text).toContain('MGT 6200 Applied Leadership | Professor Dr. Rivera | due Wed Oct 21, 11:59 PM');
+    const next = await service.runTool({ id: 'whats_due', arg: 'anything due tomorrow' }, { code: null, today: '2026-10-21', fetcher: async () => '' });
+    expect(next.note).toBe('Nothing due tomorrow');
+    expect(next.text).toContain('The next one is');
   });
 });

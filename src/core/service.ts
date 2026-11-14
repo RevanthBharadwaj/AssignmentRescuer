@@ -21,12 +21,13 @@ import { buildAssignmentContext, toAnnouncement } from './courseContent';
 import { normaliseCourseCode } from './util';
 import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
 import { buildBrief, briefToText, type Brief } from './brief';
-import { prettyDate, milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
+import { prettyDate, prettyTime, milestonesFor, remindersFor, dueReminders, formatDigest, formatEmail, DEFAULT_PUSH, type Email, type Milestone, type PushSettings, type Reminder } from './schedule';
 import { summariseUnits, type UnitSummary } from './units';
 import { parseOverview, syllabusPrompt } from './ai';
 import { chunkText, retrieve } from './retrieve';
 import { modelFor } from './models';
-import { apaText, inText, type Work } from './scholar';
+import { apaText, inText, searchWorks, verifyDoi, type Fetcher, type Work } from './scholar';
+import { dueRange, toolInfo, type ToolCall, type ToolId } from './tools';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
 import { sourceKind, sourcesForCourse } from './courseContent';
 import { addDays } from './extract/dates';
@@ -83,6 +84,8 @@ const DEFAULT_NEXT: NextSemesterSettings = {
 };
 
 export type RawEmbed = (model: string, baseUrl: string, texts: string[]) => Promise<number[][]>;
+
+export interface ToolResult { id: ToolId; label: string; note: string; text: string; works?: Work[] }
 
 export class AcademicService {
   constructor(private readonly repo: Repository) {}
@@ -512,10 +515,13 @@ export class AcademicService {
     return summariseUnits((await this.repo.listRecords()).filter((r) => r.fields.courseCode === code), today);
   }
 
-  // ---------- reminders by text and desktop notification ----------
+  // ---------- reminders by email and desktop notification ----------
 
   async pushSettings(): Promise<PushSettings> {
-    return { ...DEFAULT_PUSH, ...(await this.repo.getSetting<Partial<PushSettings>>('push', {})) };
+    const stored = await this.repo.getSetting<Partial<PushSettings>>('push', {});
+    // Only known fields, so settings saved by older versions (texting) are dropped cleanly.
+    return (Object.keys(DEFAULT_PUSH) as (keyof PushSettings)[]).reduce(
+      (out, k) => ({ ...out, [k]: stored[k] ?? DEFAULT_PUSH[k] }), { ...DEFAULT_PUSH });
   }
 
   async savePushSettings(s: PushSettings): Promise<void> {
@@ -530,14 +536,24 @@ export class AcademicService {
     return remindersFor(await this.milestones());
   }
 
-  /** What a day's text would say, for a preview and for sending. */
+  private async courseInfo(): Promise<Record<string, { name: string | null; instructor: string | null }>> {
+    const courses: Record<string, { name: string | null; instructor: string | null }> = {};
+    for (const c of (await this.repo.listRecords()).filter((r) => r.entityType === 'course')) {
+      courses[String(c.fields.code)] = { name: c.fields.name ? String(c.fields.name) : null, instructor: c.fields.instructor ? String(c.fields.instructor) : null };
+    }
+    return courses;
+  }
+
+  /** The email for a day's reminders, for a preview and for sending. */
+  async emailFor(reminders: Reminder[]): Promise<Email | null> {
+    return formatEmail(reminders, await this.courseInfo(), (await this.pushSettings()).name);
+  }
+
+  /** What a day's desktop notification would say. */
   async messagesFor(reminders: Reminder[]): Promise<string[]> {
     const records = await this.repo.listRecords();
     const { texts } = await this.factsByCourse(records);
-    const courses: Record<string, { name: string | null; instructor: string | null }> = {};
-    for (const c of records.filter((r) => r.entityType === 'course')) {
-      courses[String(c.fields.code)] = { name: c.fields.name ? String(c.fields.name) : null, instructor: c.fields.instructor ? String(c.fields.instructor) : null };
-    }
+    const courses = await this.courseInfo();
     return formatDigest(reminders, courses, (m) => {
       const t = texts[m.courseCode];
       const n = /(\d+)/.exec(m.unit ?? '')?.[1];
@@ -548,12 +564,12 @@ export class AcademicService {
   }
 
   /** Reminders that are due now and have not gone out yet. */
-  async dueNow(now: Date, today: string): Promise<{ reminders: Reminder[]; messages: string[]; settings: PushSettings }> {
+  async dueNow(now: Date, today: string): Promise<{ reminders: Reminder[]; messages: string[]; email: Email | null; settings: PushSettings }> {
     const settings = await this.pushSettings();
-    if (!settings.enabled) return { reminders: [], messages: [], settings };
+    if (!settings.enabled) return { reminders: [], messages: [], email: null, settings };
     const sent = await this.sentLog();
     const due = dueReminders(await this.reminderPlan(), now, today, settings.hour, new Set(Object.keys(sent)));
-    return { reminders: due, messages: due.length ? await this.messagesFor(due) : [], settings };
+    return { reminders: due, messages: due.length ? await this.messagesFor(due) : [], email: due.length && settings.mail ? await this.emailFor(due) : null, settings };
   }
 
   async markReminded(reminders: Reminder[], today: string): Promise<void> {
@@ -629,7 +645,7 @@ export class AcademicService {
     return found.map((f) => ({ text: `[${f.chunk.source}]\n${f.chunk.text}`, how: f.how }));
   }
 
-  async chatSystemFor(code: string | null, assignmentId: string | null, today: string, passages: string[] = []): Promise<string> {
+  async chatSystemFor(code: string | null, assignmentId: string | null, today: string, passages: string[] = [], tools: string[] = []): Promise<string> {
     const records = await this.repo.listRecords();
     const course = code ? records.find((r) => r.entityType === 'course' && r.fields.code === code) : null;
     const { facts } = code ? await this.syllabusFor(code) : { facts: null };
@@ -648,12 +664,39 @@ export class AcademicService {
     }
     return chatSystem({
       courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
-      grading, upcoming, focus, references, passages, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
+      grading, upcoming, focus, references, passages, tools, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
     }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
   }
 
+  /** Run one chat tool and return what it found, for the student (note, works) and for the model (text). */
+  async runTool(call: ToolCall, ctx: { code: string | null; today: string; fetcher: Fetcher }): Promise<ToolResult> {
+    const label = toolInfo(call.id).label;
+    if (call.id === 'whats_due') {
+      const range = dueRange(call.arg, ctx.today);
+      const courses = await this.courseInfo();
+      const all = (await this.milestones()).filter((m) => !ctx.code || m.courseCode === ctx.code);
+      const line = (m: (typeof all)[number]) => {
+        const c = courses[m.courseCode];
+        return `- ${m.title}${m.kind === 'initial_post' ? ' (first post)' : ''} | ${[m.courseCode, c?.name].filter(Boolean).join(' ')}${c?.instructor ? ` | Professor ${c.instructor}` : ''} | due ${prettyDate(m.date)}${m.time ? `, ${prettyTime(m.time)}${m.timeZone ? ` ${m.timeZone}` : ''}` : ''}${m.points !== null ? ` | ${m.points} pts` : ''}`;
+      };
+      const inRange = all.filter((m) => m.date >= range.from && m.date <= range.to);
+      if (inRange.length) return { id: call.id, label, note: `${inRange.length} due ${range.label}`, text: `Today is ${ctx.today}. Due ${range.label}:\n${inRange.map(line).join('\n')}` };
+      const next = range.overdue ? undefined : all.find((m) => m.date > range.to);
+      return { id: call.id, label, note: `Nothing due ${range.label}`, text: `Today is ${ctx.today}. Nothing is due ${range.label}.${next ? ` The next one is:\n${line(next)}` : ''}` };
+    }
+    if (call.id === 'check_doi') {
+      const w = await verifyDoi(call.arg, ctx.fetcher);
+      if (!w) return { id: call.id, label, note: 'DOI not found', text: `No record for DOI ${call.arg} exists in Crossref. Tell the student not to cite it until they find the real paper.` };
+      return { id: call.id, label, note: 'DOI is real', works: [w], text: `DOI ${call.arg} is real:\n${apaText(w)}\nIn text: ${inText(w)}` };
+    }
+    const r = await searchWorks(call.arg, ctx.fetcher);
+    const works = r.works.slice(0, 5);
+    if (!works.length) return { id: call.id, label, note: 'Nothing found', text: `A search for "${call.arg}" in Crossref and OpenAlex found nothing. Suggest fewer or different keywords. Do not make up sources.` };
+    return { id: call.id, label, note: `${works.length} found for "${call.arg}"`, works, text: `Real records found for "${call.arg}":\n${works.map((w) => `- ${apaText(w)} | In text: ${inText(w)}`).join('\n')}` };
+  }
+
   /** One chat turn: the student's message in, the assistant's reply out. */
-  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string, opts: { task?: 'assignment' | 'general'; embed?: RawEmbed } = {}): Promise<{ text: string; model: string; task: 'assignment' | 'general'; search: 'meaning' | 'keywords' | 'none' }> {
+  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string, opts: { task?: 'assignment' | 'general'; embed?: RawEmbed; tools?: ToolResult[] } = {}): Promise<{ text: string; model: string; task: 'assignment' | 'general'; search: 'meaning' | 'keywords' | 'none'; passages: number }> {
     const s = await this.aiSettings();
     if (!aiReady(s)) {
       throw new Error(isCloud(s.provider) && !s.cloudConsent
@@ -664,8 +707,8 @@ export class AcademicService {
     const task = opts.task ?? (assignmentId ? 'assignment' : 'general');
     const model = modelFor(s, task === 'assignment' ? 'writing' : 'chat');
     const found = await this.passagesFor(code, text, s, s.provider === 'ollama' ? opts.embed : undefined);
-    const system = await this.chatSystemFor(code, assignmentId, today, found.map((f) => f.text));
+    const system = await this.chatSystemFor(code, assignmentId, today, found.map((f) => f.text), (opts.tools ?? []).map((t) => `${t.label}:\n${t.text}`));
     const reply = await complete({ provider: s.provider, model, system, prompt: text, history, json: false, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
-    return { text: reply, model, task, search: found[0]?.how ?? 'none' };
+    return { text: reply, model, task, search: found[0]?.how ?? 'none', passages: found.length };
   }
 }

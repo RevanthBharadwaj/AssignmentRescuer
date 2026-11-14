@@ -708,15 +708,18 @@ input[type='url'] { width: 100%; font-family: var(--font-mono); font-size: 13px;
 .brief-block.b-dates { border-top: 3px solid var(--gray-300); }
 
 /* ---------- chat: same surfaces, fonts and lime accents as the rest of the app ---------- */
-.chat { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.chat { display: flex; flex-direction: column; gap: 12px; width: 100%; height: calc(100vh - 72px - 24px - var(--dock-h) - 22px); min-height: 460px; }
+main:has(.chat) { padding-bottom: calc(var(--dock-h) + 22px); }
 .chat-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
 .chat-head h1 { margin: 0 0 6px; }
-.chat-head p { color: var(--ink-soft); font-size: 16px; margin: 0; max-width: 680px; }
+.chat-head { flex: 0 0 auto; }
+.chat-head h1 { font-size: 30px; }
+.chat-head p { color: var(--ink-soft); font-size: 15px; margin: 0; max-width: 680px; }
 .chat-ai { font-size: 12px; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--olive-line); color: var(--lime-100); background: var(--olive); font-family: var(--font-mono); }
 .chat-ai.off { border-color: var(--accent-500); background: transparent; }
-.chat-focus { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; padding: 14px 18px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.chat-focus { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; padding: 10px 16px; flex: 0 0 auto; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .chat-focus label { min-width: 240px; flex: 1; }
-.chat-log { display: flex; flex-direction: column; gap: 14px; min-height: 52vh; max-height: calc(100vh - 430px); overflow-y: auto; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.chat-log { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .chat-empty { color: var(--ink-soft); font-size: 16px; }
 .chat-empty ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
 .bubble { max-width: 82%; padding: 14px 18px; border-radius: var(--radius); font-size: 16px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
@@ -762,10 +765,6 @@ button.small { font-size: 13px; padding: 6px 12px; }
 .info-tip:hover .info-bubble, .info-btn:focus + .info-bubble { display: flex; }
 
 /* ---------- source finder ---------- */
-.source-finder { padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
-.source-finder summary { cursor: pointer; color: var(--lime-100); font-weight: 600; margin: 0; }
-.source-finder .row { display: flex; gap: 8px; margin: 10px 0; }
-.source-finder input { flex: 1; }
 .works { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 10px; }
 .work { padding: 12px 14px; border-radius: var(--radius); background: var(--gray-950); border: 1px solid var(--line); }
 .work .apa { margin: 0 0 4px; padding-left: 1.5em; text-indent: -1.5em; line-height: 1.5; }
@@ -797,3 +796,14 @@ button.small { font-size: 13px; padding: 6px 12px; }
 .tour-dots { display: flex; gap: 6px; margin: 12px 0 4px; }
 .tour-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--gray-700); }
 .tour-dots i.on { background: var(--lime-400); }
+
+/* ---------- chat tools and the pinned message box ---------- */
+.chat-dock { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.chat-tools { position: relative; flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tool-chip { display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--olive-line); background: var(--olive); color: var(--lime-100); cursor: help; font-family: var(--font-mono); }
+.tool-used { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; white-space: normal; }
+.bubble .works { white-space: normal; }
+.saved-sources { margin-left: auto; font-size: 13px; }
+.saved-sources summary { cursor: pointer; color: var(--lime-100); }
+.saved-sources .works { position: absolute; z-index: 15; max-width: 560px; padding: 10px; background: var(--surface); border: 1px solid var(--lime-400); border-radius: var(--radius); }
+.chat-compose textarea { min-height: 72px; max-height: 160px; }

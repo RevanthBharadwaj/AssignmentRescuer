@@ -14,7 +14,7 @@ fn account(provider: &str) -> Result<&'static str, String> {
     match provider {
         "anthropic" => Ok("anthropic-api-key"),
         "openai" => Ok("openai-api-key"),
-        "twilio" => Ok("twilio-auth-token"),
+        "gmail" => Ok("gmail-app-password"),
         _ => Err("Unknown key type.".into()),
     }
 }
@@ -27,7 +27,9 @@ fn check_key(provider: &str, k: &str) -> Result<(), String> {
     match provider {
         "anthropic" if !k.starts_with("sk-ant-") => Err("That does not look like an Anthropic API key (it should start with sk-ant-).".into()),
         "openai" if !k.starts_with("sk-") || k.starts_with("sk-ant-") => Err("That does not look like an OpenAI API key (it should start with sk-).".into()),
-        "twilio" if k.len() < 20 => Err("That does not look like a Twilio auth token.".into()),
+        "gmail" if k.len() != 16 || !k.chars().all(|c| c.is_ascii_alphanumeric()) => {
+            Err("A Gmail app password is 16 letters (Google shows it in four groups). Create one at myaccount.google.com/apppasswords.".into())
+        }
         _ => Ok(()),
     }
 }
@@ -35,7 +37,9 @@ fn check_key(provider: &str, k: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn ai_set_key(provider: String, key: Option<String>) -> Result<(), String> {
     let e = entry(&provider)?;
-    match key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+    // Google shows app passwords in groups of four; the spaces are not part of it.
+    let strip = |k: String| if provider == "gmail" { k.split_whitespace().collect::<String>() } else { k.trim().to_string() };
+    match key.map(strip).filter(|k| !k.is_empty()) {
         Some(k) => {
             check_key(&provider, &k)?;
             e.set_password(&k).map_err(|e| format!("Could not save the key: {e}"))
@@ -228,7 +232,8 @@ mod tests {
         assert!(check_key("anthropic", "sk-abc").is_err());
         assert!(check_key("openai", "sk-proj-abc").is_ok());
         assert!(check_key("openai", "sk-ant-abc").is_err());
-        assert!(check_key("twilio", "short").is_err());
+        assert!(check_key("gmail", "short").is_err());
+        assert!(check_key("gmail", "abcdefghijklmnop").is_ok());
     }
 
     #[test]
