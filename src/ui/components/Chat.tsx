@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { ChangeProposal, ConfirmedRecord } from '../../core/types';
-import { looksLikeMaterial, type ChatMessage } from '../../core/chat';
+import { isDocumentReply, looksLikeMaterial, type ChatMessage } from '../../core/chat';
 import { aiReady } from '../../core/ai';
 import { completeAi, describeImage, embedAi } from '../aiClient';
 import { guessIntent, modelFor, modelLabel } from '../../core/models';
@@ -79,7 +79,8 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
 
   const [code, setCode] = useState<string>(startCode ?? '');
   const [assignmentId, setAssignmentId] = useState<string>(startAssignment ?? '');
-  const key = assignmentId || code || 'all';
+  // One saved chat per course, plus one for all courses. The assignment you pick only adds context.
+  const key = code || 'all';
   const { data: stored } = useAsync(() => service.chatHistory(key), [key]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
@@ -89,7 +90,9 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
   const [titlePageOn, setTitlePageOn] = useState(true);
   const end = useRef<HTMLDivElement>(null);
 
+  useEffect(() => { setMessages([]); }, [key]);
   useEffect(() => { if (stored) setMessages(stored); }, [stored, key]);
+  const { data: threads } = useAsync(() => service.chatThreads(['all', ...(base?.courses ?? []).map((c) => c.code)]), [version, messages.length, base]);
   useEffect(() => { if (typeof end.current?.scrollIntoView === 'function') end.current.scrollIntoView({ block: 'end' }); }, [messages.length, busy]);
   useEffect(() => { if (base && !code && base.courses.length === 1) setCode(base.courses[0].code); }, [base, code]);
 
@@ -258,11 +261,24 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
 
   return (
     <section className="chat" aria-labelledby="chat-title">
+      <nav className="chat-threads" aria-label="Chats by course">
+        <h2>Chats</h2>
+        {[{ code: '', name: 'Questions about any course' }, ...base.courses].map((t) => {
+          const th = threads?.[t.code || 'all'];
+          return (
+            <button key={t.code || 'all'} type="button" className={`thread ${code === t.code ? 'on' : ''}`} aria-current={code === t.code ? 'true' : undefined} disabled={busy !== null} onClick={() => { setCode(t.code); setAssignmentId(''); }}>
+              <strong>{t.code || 'All courses'}</strong>
+              <span className="thread-name">{t.name}</span>
+              <span className="thread-last">{th?.last || 'No messages yet'}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="chat-main">
       <Hint id="chat" />
       <header className="chat-head">
         <div>
-          <h1 id="chat-title">Chat</h1>
-          <p className="muted small">Your study assistant. It answers from the courses and assignments you saved, and uses tools when a question needs them.</p>
+          <h1 id="chat-title">{code ? `Chat · ${code}` : 'Chat'}</h1>
         </div>
         <span className={`chat-ai ${ready ? 'on' : 'off'}`}>
           {ready ? `Everyday: ${modelLabel(modelFor(base.ai, 'chat'))} · Assignments: ${modelLabel(modelFor(base.ai, 'writing'))}` : <button type="button" className="link" onClick={() => go({ name: 'setup' })}>Turn on the AI assistant →</button>}
@@ -270,7 +286,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
       </header>
 
       <div className="chat-focus">
-        <label>Course
+        <label className="chat-course-select">Course
           <select value={code} onChange={(e) => { setCode(e.target.value); setAssignmentId(''); }}>
             <option value="">Any course</option>
             {base.courses.map((c) => <option key={c.code} value={c.code}>{c.code} {c.name}</option>)}
@@ -325,7 +341,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
             {m.kind === 'intake' && m.proposalIds && m.proposalIds.length > 0 && <ProposalCard ids={m.proposalIds} />}
             {m.role === 'assistant' && !m.kind && m.model && (
               <div className="bubble-actions">
-                <button type="button" className="secondary small" onClick={() => void makeDoc(m.content, titlePageOn)}>Download as Word document</button>
+                {isDocumentReply(m.content) && <button type="button" className="secondary small" onClick={() => void makeDoc(m.content, titlePageOn)}>Download as Word document</button>}
                 <button type="button" className="link" onClick={() => { void navigator.clipboard?.writeText(m.content); toast('Copied'); }}>copy</button>
                 {assignmentId && !m.noteId && <button type="button" className="link" onClick={async () => { await service.saveDraft(assignmentId, m.content); refresh(); toast('Saved with the assignment'); }}>save with this assignment</button>}
               </div>
@@ -364,6 +380,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
           </div>
         </div>
         <p className="muted small">Cmd+Enter (Ctrl+Enter on Windows) sends. Answers come from your saved material; check anything you will submit.</p>
+      </div>
       </div>
     </section>
   );

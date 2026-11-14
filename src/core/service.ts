@@ -628,6 +628,17 @@ export class AcademicService {
     await this.repo.setSetting(`chat:${key}`, messages.slice(-60));
   }
 
+  /** One line per saved chat (one chat per course, plus one for all courses), for the list beside the conversation. */
+  async chatThreads(keys: string[]): Promise<Record<string, { last: string; at: string | null }>> {
+    const out: Record<string, { last: string; at: string | null }> = {};
+    for (const k of keys) {
+      const h = (await this.chatHistory(k)).filter((m) => m.kind !== 'ask');
+      const m = h[h.length - 1];
+      out[k] = { last: m ? m.content.replace(/\s+/g, ' ').trim().slice(0, 80) : '', at: m?.at ?? null };
+    }
+    return out;
+  }
+
   async clearChat(key: string): Promise<void> {
     await this.repo.setSetting(`chat:${key}`, []);
   }
@@ -670,8 +681,9 @@ export class AcademicService {
     const grading = facts?.grading.map((g) => `${g.label}: ${g.points} points, ${g.percent}%`).join('\n') ?? '';
     const mine = records.filter((r) => r.entityType === 'assignment' && (!code || r.fields.courseCode === code) && r.fields.status !== 'submitted');
     const dueOf = (r: ConfirmedRecord) => (r.fields.dueDate as AcademicDate | null)?.iso ?? null;
-    const upcoming = mine.filter((r) => dueOf(r) && (dueOf(r) as string) >= today).sort((a, b) => (dueOf(a) as string).localeCompare(dueOf(b) as string)).slice(0, 8)
-      .map((r) => `${String(r.fields.title)} (${dueOf(r)}${typeof r.fields.pointsPossible === 'number' ? `, ${r.fields.pointsPossible} pts` : ''})`).join('\n');
+    const upcoming = mine.filter((r) => dueOf(r) && (dueOf(r) as string) >= today).sort((a, b) => (dueOf(a) as string).localeCompare(dueOf(b) as string)).slice(0, 14)
+      .map((r) => `[${String(r.fields.courseCode ?? '')}] ${String(r.fields.title)} (due ${dueOf(r)}${typeof r.fields.pointsPossible === 'number' ? `, ${r.fields.pointsPossible} pts` : ''})`).join('\n');
+    const courses = records.filter((r) => r.entityType === 'course').map((r) => [String(r.fields.code), r.fields.name ? String(r.fields.name) : '', r.fields.instructor ? `Professor ${String(r.fields.instructor)}` : ''].filter(Boolean).join(' · '));
     let focus: { title: string; brief: string } | null = null;
     let references: string[] = [];
     if (assignmentId) {
@@ -682,7 +694,7 @@ export class AcademicService {
     }
     return chatSystem({
       courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
-      grading, upcoming, focus, references, passages, tools, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
+      grading, upcoming, courses, focus, references, passages, tools, today: `${prettyDate(today)}, ${today.slice(0, 4)} (${today})`,
     }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
   }
 

@@ -829,3 +829,26 @@ button.small { font-size: 13px; padding: 6px 12px; }
 .term-note { color: var(--lime-300); margin: 8px 0; }
 .other-terms { opacity: .85; }
 .other-terms label.inline { flex-direction: row; align-items: center; gap: 8px; }
+
+/* ---------- chat fills the window: a chat per course on the left, the conversation on the right ---------- */
+main:has(.chat) { max-width: none; padding: 14px 24px calc(var(--dock-h) + 14px); }
+.chat { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; height: calc(100vh - 72px - 14px - var(--dock-h) - 14px); min-height: 460px; }
+.chat-main { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
+.chat-head h1 { margin: 0; font-size: 24px; }
+.chat-threads { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; padding: 2px 4px 2px 0; }
+.chat-threads h2 { font-size: 13px; margin: 4px 0 6px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.thread { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: inherit; }
+.thread:hover:not(:disabled) { border-color: var(--lime-300); }
+.thread.on { background: var(--olive); border-color: var(--lime-400); }
+.thread strong { font-size: 14px; color: var(--lime-100); }
+.thread-name { font-size: 13px; color: var(--ink-soft); }
+.thread-last { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-focus { padding: 8px 14px; gap: 14px; }
+.chat-focus label { min-width: 200px; }
+.chat-course-select { display: none; }
+.bubble { max-width: 900px; }
+@media (max-width: 900px) {
+  .chat { grid-template-columns: 1fr; }
+  .chat-threads { display: none; }
+  .chat-course-select { display: flex; }
+}

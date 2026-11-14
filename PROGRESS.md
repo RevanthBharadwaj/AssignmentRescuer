@@ -30,7 +30,16 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 16: reminders when the app is closed, semester check (latest)**
+**Update 17: a chat per course, full window chat, better answers (latest)**
+
+1. Chat is now one saved chat per course, plus one for all courses. A list on the left shows each chat with its last message; picking a course opens its history. The assignment you pick only adds context. Chats saved earlier under an assignment will not show in the new per course chats.
+2. The chat fills the window (wide page, list on the left, conversation and pinned message box on the right; the list folds into the Course menu on narrow windows).
+3. Download as Word document appears only when a reply is a document (a titled paper or a long write up), not on every answer.
+4. Answers: the assistant now answers the question first, is brief, never ends with a generic offer, and with no course chosen it sees all courses and upcoming items with course codes and times.
+5. AI settings explain the macOS keychain password prompt.
+6. 201 Vitest tests and 18 Rust tests pass. Not tried in a real window from the sandbox.
+
+**Update 16: reminders when the app is closed, semester check**
 
 1. Reminder emails go out even when the app is closed. While reminders are on, the app saves the next 45 days of emails (one per day) in its data folder and installs one scheduled job, a launchd agent on macOS or a Task Scheduler task on Windows, that runs the same program with `--send-reminders <file>` every 15 minutes. It sends what is due after the chosen hour, records each send at once so nothing goes twice, and exits with no window. Turning the option off removes the job and the file. The computer must be on. Desktop notifications still need the app open. The open app skips email while the job is active, so nothing is sent twice.
 2. Semester check: a pasted course list now asks "Which semester are you in?" before adding, compares with the saved semester, leaves other terms out unless ticked and changes the saved semester only after the student picks. Pasted text or a screenshot in Chat that names a different term than the saved semester asks first and saves nothing until answered. Word and PDF attachments are not checked yet.

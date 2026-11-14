@@ -31,6 +31,12 @@ export interface ChatMessage extends ChatTurn {
   works?: Work[];
 }
 
+/** A reply that is a document (a paper or write up), not an answer: only these get a Word download. */
+export function isDocumentReply(text: string): boolean {
+  const body = text.split(/\n-{3,}\s*\n/)[0];
+  return /^#\s+\S/m.test(body) || body.split(/\s+/).length >= 350;
+}
+
 export function looksLikeMaterial(text: string): boolean {
   const lines = text.split('\n').filter((l) => l.trim()).length;
   return text.length >= 500 || lines >= 8;
@@ -72,7 +78,9 @@ export const CHAT_RULES = [
   'When asked to write or rewrite: write in first person as the student, from the notes and experiences they gave you. If the assignment needs a personal example and they gave none, ask for it first. Follow the word count, APA 7 and every requirement in the brief, and end with the word count.',
   'When the student pastes notes or a draft: improve clarity and structure while keeping their meaning, facts and voice. Do not add claims they did not make. Say in two or three short lines what you changed.',
   'When something the assignment needs is missing from the material, say what is missing and where in Canvas or the syllabus to find it.',
-  'Answer in plain conversational prose. Be direct and specific.',
+  'Answer like a knowledgeable, friendly study partner. Answer the question that was asked in your first sentence. For a greeting or small talk, reply in one or two warm sentences. Keep answers short unless the student asks for depth, and use a short list only when you are listing several items.',
+  'Never end with a generic offer such as "what would you like help with?" or "let me know". End when the answer is complete. Ask a question only when you cannot answer without the answer.',
+  'When no course is chosen, the question may be about any of the student\'s courses: answer across all of them and name the course code beside each item. Do not ask the student to pick a course unless the answer truly depends on it.',
   'If TOOL RESULTS are provided, they were just fetched for this question: answer from them first and do not contradict them. Sources listed there are real records; present them as given and never add details they do not show.',
   'When asked to write a paper, response or other document, write the complete text ready to submit as markdown: # for the title, ## for headings, plain paragraphs, and a final # References section listing only saved sources in APA 7. The student can download it as a Word document, so do not add commentary inside the document; put any notes after it, separated by a line with three dashes.',
 ].join('\n');
@@ -83,6 +91,8 @@ export interface ChatContext {
   courseCode: string | null;
   grading: string;
   upcoming: string;
+  /** Every course the student has, one line each. */
+  courses?: string[];
   /** Today's date, so questions like what is due today can be answered. */
   today?: string;
   focus: { title: string; brief: string } | null;
@@ -97,7 +107,7 @@ export interface ChatContext {
 export function chatSystem(c: ChatContext, nonce: string): string {
   const material = [
     c.today ? `TODAY: ${c.today}` : '',
-    c.courseCode ? `COURSE: ${[c.courseCode, c.courseName, c.instructor].filter(Boolean).join(' · ')}` : 'COURSE: not chosen yet; ask which course if it matters.',
+    c.courseCode ? `COURSE: ${[c.courseCode, c.courseName, c.instructor].filter(Boolean).join(' · ')}` : `COURSE: none chosen; use all of the student's courses.${c.courses?.length ? `\nCOURSES\n${c.courses.join('\n')}` : ''}`,
     c.grading ? `GRADING\n${c.grading}` : '',
     c.upcoming ? `COMING UP\n${c.upcoming}` : '',
     c.focus ? `FOCUS ASSIGNMENT: ${c.focus.title}\n${c.focus.brief}` : '',

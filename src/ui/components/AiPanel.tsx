@@ -337,6 +337,7 @@ export function AiSettingsCard() {
               <ol>{c.steps.map((x) => <li key={x}>{x}</li>)}</ol>
             </div>
           ))}
+          <p className="muted small">On a Mac, the first time the app uses your key, macOS asks for your Mac login password to open the keychain. That is your Mac asking, not the app. Press Always Allow and it will not ask again for this version of the app; a new version asks once more.</p>
           <label className="consent">
             <input type="checkbox" checked={s.cloudConsent} onChange={(e) => setDraft({ ...s, cloudConsent: e.target.checked })} />
             <span>I agree that the text of announcements and assignments I analyze, and anything I type or paste into Chat, is sent to {providerName(s.provider)}. Nothing is sent until I press an AI button or send a chat message.</span>
