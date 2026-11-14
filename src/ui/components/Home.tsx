@@ -5,44 +5,91 @@ import { addDays } from '../../core/extract/dates';
 import { remindersDueToday } from '../../core/reminders/deadlineReminders';
 import type { AcademicDate } from '../../core/types';
 import { formatDate, formatTime } from '../format';
-import type { Tab } from '../App';
 
-export function Home({ goTo }: { goTo: (tab: Tab) => void }) {
-  const { service, version, refresh, today } = useApp();
-  const { data } = useAsync(async () => ({
-    onboarding: await service.onboarding(),
-    prompt: await service.subjectPrompt(today),
-    next: await service.nextSemesterSettings(),
-    deadlines: await service.upcomingDeadlines(today, 14),
-    reminders: remindersDueToday(await service.upcomingReminders(today), today),
-    pending: (await service.repository.listProposals('pending')).length,
-    courses: (await service.repository.listRecords('course')).length,
-  }), [version, today]);
+export function Home() {
+  const { service, version, refresh, today, go } = useApp();
+  const { data } = useAsync(async () => {
+    const records = await service.repository.listRecords();
+    return {
+      onboarding: await service.onboarding(),
+      prompt: await service.subjectPrompt(today),
+      next: await service.nextSemesterSettings(),
+      deadlines: await service.upcomingDeadlines(today, 14),
+      reminders: remindersDueToday(await service.upcomingReminders(today), today),
+      pending: (await service.repository.listProposals('pending')).length,
+      courses: records.filter((r) => r.entityType === 'course'),
+      undated: records.filter((r) => r.entityType === 'assignment' && !r.fields.dueDate),
+    };
+  }, [version, today]);
 
   if (!data) return <p className="muted">Loading…</p>;
-  const { onboarding, prompt, deadlines, reminders, pending, next, courses } = data;
+  const { onboarding, prompt, deadlines, reminders, pending, next, courses, undated } = data;
   const semester = onboarding.questions.find((q) => q.id === 'semester')?.answer;
+  const weekEnd = addDays(today, 7);
+  const thisWeek = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! <= weekEnd);
+  const later = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! > weekEnd);
+  const courseName = (code: unknown) => courses.find((c) => c.fields.code === code)?.fields.name;
+
+  const row = (r: (typeof deadlines)[number]) => {
+    const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
+    const exam = r.fields.kind === 'exam' || r.fields.type === 'exam';
+    return (
+      <li key={r.id}>
+        <span className="date">{formatDate(d)}</span>
+        <span className="title">
+          {r.entityType === 'assignment'
+            ? <button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button>
+            : String(r.fields.title)}
+        </span>
+        <span>
+          {r.fields.courseCode ? <button type="button" className="tag as-button" title={String(courseName(r.fields.courseCode) ?? '')} onClick={() => go({ name: 'course', code: String(r.fields.courseCode) })}>{String(r.fields.courseCode)}</button> : null}
+          {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
+          {exam ? <span className="tag kind-conflict">exam</span> : null}
+        </span>
+      </li>
+    );
+  };
 
   return (
     <>
       <section className="hero" aria-labelledby="home-title">
         <span className="chip">{semester ? semester.toLowerCase() : 'welcome'}</span>
         <h1 id="home-title" className="display">Your semester</h1>
-        <p className="lede">Deadlines, readings and requirements from your own course material, checked and confirmed by you.</p>
-        {pending > 0 ? (
-          <button type="button" className="link lede-link" onClick={() => goTo('review')}>{pending} item{pending === 1 ? '' : 's'} waiting for review →</button>
+        <p className="lede">Every deadline from your courses in one place, taken from your own course pages and confirmed by you.</p>
+        {courses.length === 0 ? (
+          <button type="button" className="link lede-link" onClick={() => go({ name: 'setup' })}>set up your semester →</button>
+        ) : pending > 0 ? (
+          <button type="button" className="link lede-link" onClick={() => go({ name: 'review' })}>{pending} item{pending === 1 ? '' : 's'} waiting for review →</button>
         ) : (
-          <button type="button" className="link lede-link" onClick={() => goTo('add')}>add course material →</button>
+          <button type="button" className="link lede-link" onClick={() => go({ name: 'courses' })}>open your courses →</button>
         )}
 
         <div className="stats">
-          <div className="stat"><span className="num">{courses}</span><span className="what">course{courses === 1 ? '' : 's'} this semester</span></div>
-          <div className="stat"><span className="num">{deadlines.length}</span><span className="what">due in the next 14 days</span></div>
+          <div className="stat"><span className="num">{courses.length}</span><span className="what">course{courses.length === 1 ? '' : 's'} this semester</span></div>
+          <div className="stat"><span className="num">{thisWeek.length}</span><span className="what">due in the next 7 days</span></div>
           <div className="stat"><span className="num">{pending}</span><span className="what">waiting for your review</span></div>
         </div>
       </section>
 
       {prompt.show && <SubjectPrompt onDone={refresh} />}
+
+      {!onboarding.complete && (
+        <section aria-labelledby="setup-title">
+          <span className="chip">set up</span>
+          <h2 id="setup-title">Set up your semester</h2>
+          <p className="muted">Three short steps: your school, the semester dates, and your courses. Then paste each course's Canvas page into it.</p>
+          <ol className="steps">
+            {onboarding.questions.map((q, i) => (
+              <li key={q.id} className={q.answer ? 'done' : q.id === onboarding.nextQuestion?.id ? 'current' : ''}>
+                <span className="n">{String(i + 1).padStart(2, '0')}</span>
+                <span className="q">{q.prompt}</span>
+                <span className={q.answer ? 'a' : 'a none'}>{q.answer ?? 'Not answered yet'}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="row"><button type="button" onClick={() => go({ name: 'setup' })}>Start setup →</button></div>
+        </section>
+      )}
 
       {reminders.length > 0 && (
         <section aria-labelledby="today-title">
@@ -57,54 +104,43 @@ export function Home({ goTo }: { goTo: (tab: Tab) => void }) {
               </li>
             ))}
           </ul>
-          <p className="muted small" style={{ marginTop: 12 }}>Reminders show while the app is open. Notifications when the app is closed are not available yet.</p>
-        </section>
-      )}
-
-      {!onboarding.complete && (
-        <section aria-labelledby="setup-title">
-          <span className="chip">set up</span>
-          <h2 id="setup-title">Set up your semester</h2>
-          <p className="muted">Answer by typing, or upload a syllabus or course schedule and the answers fill in from it. You can stop and come back later.</p>
-          <ol className="steps">
-            {onboarding.questions.map((q, i) => (
-              <li key={q.id} className={q.answer ? 'done' : q.id === onboarding.nextQuestion?.id ? 'current' : ''}>
-                <span className="n">{String(i + 1).padStart(2, '0')}</span>
-                <span className="q">{q.prompt}</span>
-                <span className={q.answer ? 'a' : 'a none'}>{q.answer ?? 'Not answered yet'}</span>
-              </li>
-            ))}
-          </ol>
-          <div className="row"><button type="button" onClick={() => goTo('add')}>Start adding →</button></div>
         </section>
       )}
 
       <section aria-labelledby="due-title">
-        <span className="chip">next two weeks</span>
-        <h2 id="due-title">Due in the next 14 days</h2>
-        {deadlines.length === 0 ? <p className="muted">No confirmed deadlines in the next two weeks.</p> : (
-          <ul className="deadlines">
-            {deadlines.map((r) => {
-              const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
-              const exam = r.fields.kind === 'exam' || r.fields.type === 'exam';
-              return (
-                <li key={r.id}>
-                  <span className="date">{formatDate(d)}</span>
-                  <span className="title">{String(r.fields.title)}</span>
-                  <span>
-                    {r.fields.courseCode ? <span className="tag">{String(r.fields.courseCode)}</span> : null}
-                    {exam ? <span className="tag kind-conflict">exam</span> : null}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {onboarding.complete && prompt.nextDate && !prompt.show && (
-          <p className="muted small" style={{ marginTop: 16 }}>Next semester's subjects will be asked on {prompt.nextDate}.</p>
-        )}
-        {next.subjectsConfirmed && next.subjects.length > 0 && <p className="muted small">Next semester: {next.subjects.join(', ')}</p>}
+        <span className="chip">this week</span>
+        <h2 id="due-title">Due in the next 7 days</h2>
+        {thisWeek.length === 0 ? <p className="muted">Nothing confirmed is due this week.</p> : <ul className="deadlines">{thisWeek.map(row)}</ul>}
       </section>
+
+      {later.length > 0 && (
+        <section aria-labelledby="later-title">
+          <span className="chip ghost">coming up</span>
+          <h2 id="later-title">The week after</h2>
+          <ul className="deadlines">{later.map(row)}</ul>
+        </section>
+      )}
+
+      {undated.length > 0 && (
+        <section aria-labelledby="undated-title">
+          <span className="chip ghost">needs a date</span>
+          <h2 id="undated-title">Mentioned but not dated</h2>
+          <ul className="deadlines">
+            {undated.map((r) => (
+              <li key={r.id}>
+                <span className="date">{typeof r.fields.dueNote === 'string' ? r.fields.dueNote : 'no date yet'}</span>
+                <span className="title"><button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button></span>
+                <span>{r.fields.courseCode ? <span className="tag">{String(r.fields.courseCode)}</span> : null}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {onboarding.complete && prompt.nextDate && !prompt.show && (
+        <p className="muted small" style={{ marginTop: 40 }}>Next semester's subjects will be asked on {prompt.nextDate}.</p>
+      )}
+      {next.subjectsConfirmed && next.subjects.length > 0 && <p className="muted small">Next semester: {next.subjects.join(', ')}</p>}
 
       <div className="signature" aria-hidden="true">Rescue</div>
     </>

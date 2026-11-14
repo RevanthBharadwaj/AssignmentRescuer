@@ -56,7 +56,14 @@ export function diffFields(
 }
 
 function tokens(s: string): Set<string> {
-  return new Set(normaliseKey(s).split(' ').filter((t) => t.length > 1));
+  return new Set(normaliseKey(s).split(' ').filter((t) => t.length > 1 || /\d/.test(t)));
+}
+
+/** "Unit 3: Lecture" and "Unit 5: Lecture" share words but are different items. */
+function sameNumbers(a: string, b: string): boolean {
+  // Order matters: "Unit 2 Question 1" is not "Unit 1 Question 2".
+  const nums = (s: string) => (normaliseKey(s).match(/\d+/g) ?? []).join(' ');
+  return nums(a) === nums(b);
 }
 
 function jaccard(a: Set<string>, b: Set<string>): number {
@@ -85,7 +92,10 @@ export function findMatch<T extends { entityType: string; key: string; fields: R
     if (r.entityType !== candidate.entityType) continue;
     if ((r.fields.courseCode ?? null) !== course) continue;
     const rDate = (r.fields.dueDate ?? r.fields.date ?? null) as FieldValue;
-    const sim = jaccard(tokens(title), tokens(String(r.fields.title ?? '')));
+    const a = tokens(title);
+    const b = tokens(String(r.fields.title ?? ''));
+    if (!sameNumbers(title, String(r.fields.title ?? ''))) continue;
+    const sim = jaccard(a, b);
     if (sim >= 0.75) return r;
     if (sim >= 0.5 && isKnown(date) && isKnown(rDate) && valuesEqual(date, rDate)) return r;
   }
@@ -111,7 +121,13 @@ export function proposeChanges(
   // 1. Group candidates in this import that describe the same thing.
   const groups: { lead: ExtractedRecord; members: ExtractedRecord[] }[] = [];
   for (const c of candidates) {
-    const g = groups.find((x) => findMatch(c, [x.lead]) !== null);
+    // Within one source, distinct keys are distinct items; fuzzy matching is
+    // only for the same item described by different sources.
+    const g = groups.find((x) =>
+      x.lead.key === c.key && x.lead.entityType === c.entityType
+        ? true
+        : x.lead.provenance.sourceId !== c.provenance.sourceId && findMatch(c, [x.lead]) !== null,
+    );
     if (g) g.members.push(c);
     else groups.push({ lead: c, members: [c] });
   }

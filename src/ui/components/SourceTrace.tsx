@@ -10,10 +10,10 @@ const METHOD: Record<Provenance['extractionMethod'], string> = {
   ai_model: 'AI model',
 };
 
-export function SourceTrace({ provenance }: { provenance: Provenance[] }) {
+export function SourceTrace({ provenance, compact = false }: { provenance: Provenance[]; compact?: boolean }) {
   return (
-    <details className="trace">
-      <summary>Source{provenance.length > 1 ? `s (${provenance.length})` : ''}</summary>
+    <details className={compact ? 'trace compact' : 'trace'}>
+      <summary>{compact ? 'source' : 'Source'}{provenance.length > 1 ? `s (${provenance.length})` : ''}</summary>
       <ul>
         {provenance.map((p, i) => (
           <li key={`${p.sourceId}-${i}`}>

@@ -23,6 +23,8 @@ import { fnv1a, normaliseCourseCode, normaliseKey, parseCount } from '../util';
 export interface ExtractionContext extends DateContext {
   /** Course to use when the text never names one. */
   defaultCourseCode?: string | null;
+  /** Current semester name, used to place dates without a year. */
+  semesterName?: string | null;
 }
 
 interface Line {
@@ -63,14 +65,26 @@ const SEMESTER_END_RE = /\b((semester|term|classes|instruction)\s+ends?|last\s+d
 const BREAK_RE = /\b((spring|fall|winter|thanksgiving|mid-?term)\s+break|holiday|no\s+class(es)?|recess|campus\s+closed)\b/i;
 const UNIVERSITY_RE = /\b((?:University|College|Institute)\s+of\s+(?:[A-Z][\w.&'-]*\s?){1,5}|(?:[A-Z][\w.&'-]*\s){1,4}(?:University|College|Institute))/;
 const PROGRAM_RE = /\b((?:Master|Bachelor|Doctor)\s+of\s+[A-Z][\w ]+?|M\.?S\.?\s+in\s+[A-Z][\w ]+?|B\.?S\.?\s+in\s+[A-Z][\w ]+?|Ph\.?D\.?\s+in\s+[A-Z][\w ]+?)(?=[,.;\n]|$)/;
-const INSTRUCTOR_RE = /\b(?:instructor|professor|faculty|taught\s+by)\s*:?\s*((?:Dr\.|Prof\.|Professor)?\s*[A-Z][\w.'-]+(?:\s+[A-Z][\w.'-]+){0,3})/i;
+// The label is case insensitive; the name itself must be capitalised words.
+const INSTRUCTOR_RE = /\b(?:[Ii]nstructor|INSTRUCTOR|[Pp]rofessor|[Ff]aculty|[Tt]aught by)\s*:\s*((?:Dr\.|Prof\.|Professor)?\s*[A-Z][a-zA-Z'-]+\.?(?:\s+[A-Z][a-zA-Z'-]+\.?){0,3})/;
+export const TERM_CODE_RE = /\b(20\d{2})\s?(FA|SP|SU|WI)\b|\b(FA|SP|SU|WI)\s?(20\d{2}|\d{2})\b/;
+const TERM_NAMES: Record<string, string> = { FA: 'Fall', SP: 'Spring', SU: 'Summer', WI: 'Winter' };
+
+export function termCodeToSemester(text: string): string | null {
+  const m = TERM_CODE_RE.exec(text);
+  if (!m) return null;
+  const code = (m[2] ?? m[3]).toUpperCase();
+  let year = m[1] ?? m[4];
+  if (year.length === 2) year = `20${year}`;
+  return `${TERM_NAMES[code]} ${year}`;
+}
 
 const POINTS_RE = /\b(\d{1,4}(?:\.\d+)?)\s*(points|pts|pt)\b/i;
 const WORDS_RE = /\b(\d[\d,]*)\s*(?:(?:-|–|to)\s*(\d[\d,]*)\s*)?words\b/i;
 const PAGES_RE = /\b(\d{1,3})\s*(?:(?:-|–|to)\s*(\d{1,3})\s*)?(?:double[-\s]spaced\s+)?pages?\b/i;
 const SOURCES_RE = /\b(?:at\s+least|minimum\s+(?:of\s+)?|min\.?\s+|a\s+minimum\s+of\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:\w+\s+)?(scholarly|peer[-\s]reviewed|academic|credible|professional)\s+(?:\w+\s+)?(sources|references|articles|journal\s+articles|resources)\b/i;
 const CITATION_RE = /\b(APA(?:\s*(?:7(?:th)?|6(?:th)?)(?:\s+edition)?)?|MLA|Chicago|IEEE|Harvard|AMA)\b(?:\s+(?:style|format|formatting|citations?))?/;
-const SUBMISSION_RE = /\b(submit|upload|turnitin|file\s+format|\.docx|\.pdf|double[-\s]spaced|font|title\s+page|reference\s+page|margins?)\b/i;
+const SUBMISSION_RE = /\b(submit|upload|turnitin|file\s+format|double[-\s]spaced|font|title\s+page|reference\s+page|margins?)\b/i;
 const DOI_RE = /\b(10\.\d{4,9}\/[^\s"<>]+)/;
 
 const LEVEL_WORDS = ['Exemplary', 'Exceeds', 'Proficient', 'Meets', 'Accomplished', 'Developing', 'Approaching', 'Beginning', 'Emerging', 'Unsatisfactory', 'Does Not Meet', 'Excellent', 'Good', 'Fair', 'Poor'];
@@ -212,8 +226,12 @@ export function extractEntities(
   for (const line of lines) {
     if (!semesterName) {
       const m = SEMESTER_NAME_RE.exec(line.text);
+      const term = termCodeToSemester(line.text);
       if (m) {
         semesterName = `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}`;
+        semesterLine = line;
+      } else if (term) {
+        semesterName = term;
         semesterLine = line;
       }
     }
@@ -342,7 +360,8 @@ export function extractEntities(
 
     if (mod) {
       currentUnit = { kind: mod[1].toLowerCase(), number: Number(mod[2]) };
-      const isOnlyHeader = !assignmentTypeOf(raw) && !EXAM_RE.test(raw) && !READING_RE.test(raw);
+      const isOnlyHeader = !assignmentTypeOf(raw) && !EXAM_RE.test(raw) && !READING_RE.test(raw)
+        && !/\b(lecture|video|page|slides?|notes)\b/i.test(raw);
       if (isOnlyHeader) {
         const label = `${mod[1][0].toUpperCase()}${mod[1].slice(1).toLowerCase()} ${mod[2]}`;
         const titleRest = cleanTitle(raw.replace(MODULE_RE, ''), findDates(raw.replace(MODULE_RE, ''))[0]?.start ?? -1);
@@ -427,6 +446,8 @@ export function extractEntities(
     }
 
     if (dates.length === 0) continue;
+    // A course identifier line such as "2026FA MGT-620A-01" is not an item.
+    if (TERM_CODE_RE.test(raw) && codesHere.length > 0) continue;
 
     const aType = assignmentTypeOf(raw);
     const isExam = EXAM_RE.test(raw) && !aType;
@@ -497,7 +518,7 @@ export function extractEntities(
 
   // ---------- Pass 4: whole document assignment details ----------
   const isInstructions = hasLabel(classifications, 'assignment_instructions') || hasLabel(classifications, 'project_requirements') || hasLabel(classifications, 'discussion_question');
-  if (isInstructions && assignments.length <= 1) {
+  if (isInstructions && assignments.length <= 1 && lines.length <= 120) {
     const details = documentAssignmentDetails(text, lines);
     let target = assignments[0];
     if (!target) {

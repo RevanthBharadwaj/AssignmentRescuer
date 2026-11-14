@@ -4,9 +4,9 @@ A local first desktop app for students on macOS and Windows. Paste a syllabus, a
 
 Built with Tauri 2, React, TypeScript and SQLite.
 
-![Home screen](docs/screenshots/3-home.png)
+![Home screen](docs/screenshots/5-home.png)
 
-> **Where the project stands:** milestone 1 of 12 is done (plain text and manual entry, end to end). See [PROGRESS.md](PROGRESS.md) for the full status, what is verified, and what comes next.
+> **Where the project stands:** milestone 1 of 12 is done (text input end to end, including Canvas pages), with semester setup and course pages in place. See [PROGRESS.md](PROGRESS.md) for the full status, what is verified, and what comes next.
 
 ---
 
@@ -27,35 +27,39 @@ Built with Tauri 2, React, TypeScript and SQLite.
 
 ## What it does today
 
+You set up your semester once (school, semester dates, courses). Then, for each course, you open it in Canvas, copy the Modules page, and paste it into the course in the app. The app separates graded work from readings, lectures and files, reads every due date and point value, and shows you one list to approve. After that, Home shows what is due this week across all your courses, each course has its own timeline, and every assignment opens into a workspace with a requirements checklist.
+
 | Area | Status |
 |---|---|
-| Paste text, TXT and Markdown files, manual entry, several inputs in one import | ✅ Available |
-| Format detection by file signature, with clear errors for unsupported, corrupt and empty files | ✅ Available |
-| Semester onboarding: seven questions, answered by typing or straight from an imported syllabus, resumable | ✅ Available |
-| Review screen: every extracted item needs approval, changed deadlines show old and new values side by side | ✅ Available |
-| Source tracing: every record keeps the file, line, character span and excerpt it came from | ✅ Available |
-| Duplicate and conflict detection across sources and against confirmed records | ✅ Available |
-| Next semester subject reminders (14 days before the semester ends, every 14 days until answered) | ✅ Available |
+| Semester setup with real fields: school, program, term, first and last day, courses | ✅ Available |
+| Course pages with Timeline, Assignments, Readings and materials, and Add material tabs | ✅ Available |
+| Canvas Modules page pasted as text: items, due dates, points, units, readings, lectures, files, reminders | ✅ Available |
+| Syllabus, assignment instructions, rubric, announcement pasted as text; TXT and Markdown files | ✅ Available |
+| Review inside each course: approve many items at once, type a date for anything that has none | ✅ Available |
+| Changed deadlines and disagreeing sources shown side by side, nothing overwritten silently | ✅ Available |
+| Source tracing: every item keeps the exact lines it came from | ✅ Available |
+| Home: due in the next 7 days, the week after, and items still needing a date | ✅ Available |
 | Assignment workspace with a requirements checklist and a list of missing information | ✅ Available |
-| Content classification (16 labels) and entity extraction | 🧪 Experimental, rule based |
+| Next semester subject reminders (14 days before the semester ends, every 14 days until answered) | ✅ Available |
+| Content classification and extraction for free text | 🧪 Experimental, rule based |
 | Deadline reminders (7, 3, 1 and 0 days before) | 🧪 Experimental, shown while the app is open |
-| PDF, Word, screenshots and OCR, CSV, Excel, JSON, calendar files | ⏳ Not available yet |
+| PDF, Word, screenshots and OCR, CSV, Excel, calendar files | ⏳ Not available yet |
 | Calendar views, notifications while closed, AI agents, research, writing, APA, originality, statistics | ⏳ Not available yet |
 
-The app has its own **Features** screen that shows the same list, read from the same registry the tests check, so the app never claims more than it can do.
+The app's own **Features** screen shows the same list, read from the registry the tests check, so it never claims more than it can do.
 
 ## Screenshots
 
 | | |
 |---|---|
-| **First launch** — onboarding asks seven questions, and an imported syllabus can answer all of them | **Add information** — paste text or drop files; nothing is saved yet |
-| ![First launch](docs/screenshots/0-home-first-launch.png) | ![Add information](docs/screenshots/1-add-information.png) |
-| **Review** — each item is approved or rejected; warnings such as a missing time zone are flagged | **Courses** — the confirmed timeline per course |
-| ![Review](docs/screenshots/2-review.png) | ![Courses](docs/screenshots/5-courses.png) |
-| **Assignment workspace** — requirements checklist and what is still missing | **Features** — what this version can and cannot do |
-| ![Assignment workspace](docs/screenshots/4-assignment-workspace.png) | ![Features](docs/screenshots/6-features.png) |
+| **Semester setup** — school, dates and courses, saved as you type them | **Review inside the course** — a pasted Canvas page becomes one checklist; items without a date get a date box |
+| ![Semester setup](docs/screenshots/1-setup.png) | ![Review](docs/screenshots/2-review.png) |
+| **Course timeline** — every graded item in date order with unit and points | **Readings and materials** — readings, lectures and PDFs grouped by week |
+| ![Course timeline](docs/screenshots/3-course-timeline.png) | ![Readings and materials](docs/screenshots/4-course-materials.png) |
+| **Courses** — one card per course with what is next | **Assignment workspace** — checklist and what is still missing |
+| ![Courses](docs/screenshots/6-courses.png) | ![Assignment workspace](docs/screenshots/7-assignment-workspace.png) |
 
-All screenshots come from the real desktop build, captured automatically by the end to end test with synthetic data.
+All screenshots come from the real desktop build, captured automatically by the end to end test with synthetic course data.
 
 ## Install and run
 
@@ -105,14 +109,15 @@ Open http://localhost:1420. The browser preview uses the same app with an in-bro
 
 ## Using the app
 
-1. **Start at Home.** On first launch you see seven onboarding questions: university, program, semester, start date, end date, length and subjects.
-2. **Add information** (bottom bar, "capture it"). Paste a syllabus, course schedule, announcement, assignment prompt or rubric, or choose TXT and Markdown files. You can also enter a course, semester, deadline, reading, milestone or exam by hand. Optional fields let you say which university, semester or course the material belongs to.
-3. **Review** ("confirm it"). Every extracted item appears as a card. Approve it, reject it, or for a changed deadline choose the saved value or the new one. Open **Source** on any card to see the exact line it came from. "Approve all new items with no warnings" clears the simple ones in one click.
-4. **Courses** ("plan it"). See each course's confirmed timeline in date order, and open any assignment to get its requirements checklist and a list of anything the material didn't say (for example the citation style or rubric).
-5. **Imported material** ("trace it"). See every source you've imported, read its full text, or delete it. Deleting a source also removes records that came only from it.
-6. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next. Save them, ask again in 14 days, snooze for 3 days, say you're not enrolling, or turn the reminder off.
+1. **Set up your semester.** On first launch Home sends you to **Semester setup** (top bar). Enter your university and program, pick the term and year, set the first and last day of the semester, and add each course by code and name. These are saved straight away; there is nothing to review because you typed them.
+2. **Fill each course from Canvas.** Open **Courses** in the bottom bar and click a course, then the **Add material** tab. In Canvas, open that course's **Modules** page, press **Cmd+A** (Windows: **Ctrl+A**) and **Cmd+C**, then paste into the box and click **Extract**. You can paste a syllabus, assignment instructions, a rubric or an announcement the same way.
+3. **Approve.** Right below, everything found is listed in groups: graded work and deadlines, readings and files, reminders. Untick anything you don't want. Projects that the course page only mentions ("Project 2 is due next week") have a date box so you can type the date before approving. Click **Approve N selected**. Open **source** on any row to see the exact lines it came from.
+4. **Use it.** The course's **Timeline** tab lists every graded item in date order, **Assignments** shows points and types, **Readings and materials** groups readings, lectures and PDFs by week. Click any assignment to open its workspace and checklist.
+5. **Check Home.** Home shows what is due in the next 7 days across all courses, the week after, and anything still waiting for a date.
+6. **Keep it current.** When an instructor changes a date, paste the updated page or announcement. The app shows the old and new date side by side under **Review** and only changes it if you approve.
+7. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next.
 
-Tip: anything the parser can't find is shown as *Unknown* rather than guessed. A date written without a year stays flagged until a semester tells the app which year it is.
+**Import a syllabus** (top bar) is for material that isn't tied to one course yet, such as a full program schedule. **Imported material** (bottom bar) lists everything you've pasted and lets you delete it.
 
 ## Building installers
 
@@ -136,9 +141,9 @@ cargo test --manifest-path src-tauri/Cargo.toml     # Rust database layer
 
 | Suite | What it covers |
 |---|---|
-| Vitest (82 tests) | Date parsing, classification, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens against a real SQLite database |
+| Vitest (95 tests) | Date parsing, classification, Canvas module lists, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
 | Rust (3 tests) | Atomic batches, typed results, parameter validation |
-| End to end | The real desktop build driven through WebDriver: first launch, paste, review, approve, restart, data still there |
+| End to end | The real desktop build driven through WebDriver: first launch, semester setup, pasting a Canvas page into a course, approving, restart, data still there, assignment workspace |
 
 Running the end to end test (Linux):
 
@@ -159,7 +164,7 @@ src/
   core/                domain logic, no UI and no I/O
     input/             format detection and text extractors
     classify/          content classifier
-    extract/           date parsing and entity extraction
+    extract/           date parsing, entity extraction, Canvas module lists (canvas.ts)
     merge/             duplicate and conflict detection
     reminders/         next semester and deadline reminder scheduling
     assignments/       requirements checklist
@@ -182,7 +187,7 @@ Everything is stored in one SQLite file in your user app data folder, and this v
 
 ## Design
 
-The interface uses a dark studio look: a near black canvas, a lime cream accent, large tightly tracked DM Sans headlines, small square label chips, numbered steps, oversized numbers, and a segmented bottom bar for the four workflow stages (capture it, confirm it, plan it, trace it). Fonts are bundled with the app so it works offline. Design tokens and rationale are in [docs/DESIGN.md](docs/DESIGN.md).
+The interface uses a dark studio look: a near black canvas, a lime cream accent, large tightly tracked DM Sans headlines, small square label chips, numbered steps, oversized numbers, and a segmented bottom bar for the four main areas (Home, Courses, Review, Imported material). Fonts are bundled with the app so it works offline. Design tokens and rationale are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Documentation
 

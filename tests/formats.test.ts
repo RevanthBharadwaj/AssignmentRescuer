@@ -42,7 +42,7 @@ describe('extractors', () => {
 
   it('keeps the feature registry honest', () => {
     const implementedInputs = FEATURES.filter((f) => f.id.startsWith('input.') && f.status === 'implemented').map((f) => f.id);
-    expect(implementedInputs.sort()).toEqual(['input.manual', 'input.markdown', 'input.multiple', 'input.plain_text', 'input.txt']);
+    expect(implementedInputs.sort()).toEqual(['input.lms_modules', 'input.manual', 'input.markdown', 'input.multiple', 'input.plain_text', 'input.txt']);
     for (const f of ['pdf', 'docx', 'png', 'jpeg', 'csv', 'xlsx', 'ics', 'json'] as const) expect(isFormatImplemented(f)).toBe(false);
     expect(FEATURES.find((f) => f.id === 'notifications.closed_app')?.status).toBe('unavailable');
   });

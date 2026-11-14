@@ -1,10 +1,10 @@
 # Progress
 
-Last updated: November 14, 2026
+Last updated: November 14, 2026 (course pages and Canvas import)
 
 ## Summary
 
-Milestone 1 of 12 is complete and verified on Linux. The app imports plain text, TXT and Markdown files and manual entries, extracts academic information, asks the student to confirm it, and keeps a traceable timeline. The interface was redesigned in a dark studio style. macOS and Windows builds are set up in CI but have not been confirmed yet.
+Milestone 1 of 12 is complete and verified on Linux. The app is now organised the way a student works: set up the semester once, add courses, then paste each course's Canvas Modules page (or a syllabus) into that course and approve what was found. The first test with a real Canvas page showed the old parser could not read it; that is fixed, and a real 56 item course page now imports with every date and point value and no false conflicts. macOS and Windows builds run in CI; the first macOS build was installed and opened.
 
 ```
 Milestones   [##----------]  1 of 12 complete, 2 partly done
@@ -30,6 +30,16 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
+**Course centred app and Canvas import (latest)**
+
+1. Feedback from the first real use: everything went through one generic page, there was no place for a course, and a pasted Canvas Modules page produced junk (titles and dates on separate lines were never paired, Canvas interface text was read as content, and "Unit 3: Lecture" was treated as the same item as "Unit 5: Lecture").
+2. New Canvas module list parser: pairs each item with the due date and points on the following lines, ignores Canvas interface text, files readings, lectures, PDFs and forums as course materials by week, and turns projects mentioned only in reminders ("Project 2 is due next week") into undated items with a due note.
+3. Matching fixes: numbers in titles must match in order, items from the same paste are never merged by similarity, the instructor pattern no longer grabs stray letters, and term codes like 2026FA resolve dates that have no year.
+4. Semester setup with real fields (school, program, term, first and last day, courses), saved without review because the student typed them.
+5. Course pages with Timeline, Assignments, Readings and materials, and Add material tabs. Review happens inside the course as one checklist with bulk approve and a date box for undated items.
+6. Home is now a this week dashboard: due in the next 7 days, the week after, and items still needing a date.
+7. Tests: 95 Vitest tests (new Canvas fixture and UI flows), 3 Rust tests, and the desktop end to end test now covers setup and a Canvas paste into a course.
+
 **Milestone 1, universal input for text (commit `507f646`)**
 
 1. Import pipeline: format detection by file signature, text and Markdown extraction, cleaning of hidden characters, prompt injection flagging, duplicate upload detection by content hash.
@@ -51,28 +61,30 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | runs in CI | runs in CI |
-| 82 Vitest tests | ✅ | runs in CI | runs in CI |
+| 95 Vitest tests | ✅ | runs in CI | runs in CI |
 | 3 Rust tests | ✅ | runs in CI | runs in CI |
 | Production frontend build | ✅ | runs in CI | runs in CI |
 | Desktop app compiles and launches | ✅ | runs in CI | runs in CI |
 | End to end: import, approve, restart, data kept | ✅ | not supported by tauri-driver | not set up yet |
-| Installer build | not targeted | runs in CI (.dmg) | runs in CI (.msi, .exe) |
+| Installer build | not targeted | ✅ CI built the .dmg; it installs and opens after clearing the quarantine flag | runs in CI (.msi, .exe) |
 
 "Runs in CI" means the workflow is written but has not reported a result yet. macOS and Windows support should be called verified only after the Actions run on GitHub passes.
 
 ## Known limitations
 
-1. Extraction is rule based. Common syllabus, Canvas and assignment layouts work; unusual layouts can miss items, which can be added by hand.
+1. Extraction is rule based. Canvas Modules pages, common syllabi and assignment instructions work; other LMS layouts (Blackboard, Moodle, D2L) and Canvas's Assignments or Syllabus pages have not been tested with real samples yet.
 2. A date without a year resolves only once a semester is known.
 3. Numeric dates are read as month/day (US order).
 4. Week context carries forward until the next week heading.
 5. Research sources are recognised by DOI only and stay unverified until the research milestone adds lookups.
 6. Reminders appear only while the app is open.
-7. Installers are not code signed.
+7. Installers are not code signed, so macOS reports the app as damaged until `xattr -cr` clears the download flag.
+8. Canvas shows due dates without a time, so items imported from a Modules page have no due time.
 
 ## Next steps
 
-1. Confirm the CI run passes on macOS and Windows.
-2. Milestone 2: PDF and DOCX import, with page level provenance and OCR for scanned PDFs.
-3. Add the names and roles of the 12 specialised agents from the original specification to `docs/ROADMAP.md`.
-4. Set up code signing for macOS and Windows installers.
+1. Try the Canvas Assignments and Syllabus pages and one more course with real samples, and fix what they reveal.
+2. Confirm the CI run passes on Windows.
+3. Milestone 2: PDF and DOCX import, with page level provenance and OCR for scanned PDFs.
+4. Add the names and roles of the 12 specialised agents from the original specification to `docs/ROADMAP.md`.
+5. Set up code signing for macOS and Windows installers (ad hoc signing first, Apple notarisation once there is a developer account).

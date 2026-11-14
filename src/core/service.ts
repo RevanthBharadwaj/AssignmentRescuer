@@ -15,6 +15,20 @@ import {
   type ScheduledReminder,
 } from './reminders/deadlineReminders';
 import type { Resolution } from './merge/merge';
+import type { EntityType, FieldValue } from './types';
+import { normaliseCourseCode } from './util';
+
+export interface SemesterInput {
+  name: string;
+  start: AcademicDate | null;
+  end: AcademicDate | null;
+}
+
+export interface CourseInput {
+  code: string;
+  name: string | null;
+  instructor: string | null;
+}
 
 /** Application service: the only layer the UI talks to. */
 
@@ -54,10 +68,61 @@ export class AcademicService {
       context: {
         semesterStart: (semester?.fields.startDate as AcademicDate | null)?.iso ?? null,
         semesterEnd: (semester?.fields.endDate as AcademicDate | null)?.iso ?? null,
+        semesterName: (semester?.fields.name as string | null) ?? null,
       },
     });
     await this.repo.saveImport(result);
     return result;
+  }
+
+  /**
+   * Save something the student typed. Typed input is the student's own
+   * statement, so it is confirmed straight away (still with provenance and
+   * a change log). An existing record is updated in place.
+   */
+  async saveTyped(entityType: EntityType, fields: Record<string, FieldValue>, existingId: string | null = null) {
+    if (existingId) return this.repo.correctRecord(existingId, fields);
+    const r = await this.import([{ kind: 'manual', entityType, fields }]);
+    const p = r.proposals[0];
+    return this.repo.approveProposal(p.id);
+  }
+
+  async saveProfile(university: string, program: string | null) {
+    const existing = (await this.repo.listRecords('university'))[0] ?? null;
+    return this.saveTyped('university', { name: university.trim(), program: program?.trim() || null, academicYear: null }, existing?.id ?? null);
+  }
+
+  async saveSemester(input: SemesterInput) {
+    const sem = (await this.onboarding()).currentSemester;
+    const durationWeeks = input.start?.iso && input.end?.iso
+      ? Math.round(((Date.parse(input.end.iso) - Date.parse(input.start.iso)) / 86_400_000 + 1) / 7)
+      : null;
+    const rec = await this.saveTyped('semester', { name: input.name.trim(), startDate: input.start, endDate: input.end, durationWeeks }, sem?.id ?? null);
+    await this.setCurrentSemester(rec.id);
+    return rec;
+  }
+
+  async addCourse(input: CourseInput) {
+    const semester = (await this.onboarding()).currentSemester;
+    const code = normaliseCourseCode(input.code);
+    const existing = await this.repo.findRecordByKey('course', code);
+    return this.saveTyped('course', {
+      code,
+      name: input.name?.trim() || null,
+      instructor: input.instructor?.trim() || null,
+      semester: (semester?.fields.name as string | null) ?? null,
+    }, existing?.id ?? null);
+  }
+
+  async removeCourse(id: string) {
+    await this.repo.deleteRecord(id);
+  }
+
+  /** Import material for one course: the course and semester are known, so nothing needs classifying by hand. */
+  async importForCourse(courseCode: string, inputs: ImportInput[]) {
+    const semester = (await this.onboarding()).currentSemester;
+    const hints = { course: courseCode, semester: (semester?.fields.name as string | undefined) ?? undefined };
+    return this.import(inputs.map((i) => ({ ...i, hints: { ...hints, ...(i.hints ?? {}) } }) as ImportInput));
   }
 
   approve(proposalId: string, resolution?: Resolution) {
@@ -155,6 +220,6 @@ export class AcademicService {
         const d = dateOf(r);
         return d !== null && d >= today && d <= limit;
       })
-      .sort((a, b) => (dateOf(a) as string).localeCompare(dateOf(b) as string));
+      .sort((a, b) => (dateOf(a) as string).localeCompare(dateOf(b) as string) || String(a.fields.title ?? '').localeCompare(String(b.fields.title ?? ''), undefined, { numeric: true }));
   }
 }

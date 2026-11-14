@@ -115,6 +115,7 @@ export type EntityType =
   | 'assignment'
   | 'rubric_criterion'
   | 'timeline_event'
+  | 'course_material'
   | 'research_source';
 
 export type TimelineEventKind =

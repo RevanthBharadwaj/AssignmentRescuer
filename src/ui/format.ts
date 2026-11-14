@@ -38,11 +38,13 @@ export const FIELD_LABELS: Record<string, string> = {
   description: 'Description', maxPoints: 'Max points', performanceLevels: 'Performance levels', kind: 'Kind',
   date: 'Date', doi: 'DOI', authors: 'Authors', year: 'Year', journal: 'Journal', publicationType: 'Publication type',
   citationText: 'Citation text', assignmentTitle: 'Rubric for', assignmentKey: 'Linked assignment',
+  dueNote: 'Due (as mentioned)', section: 'Section',
 };
 
 export const ENTITY_LABELS: Record<string, string> = {
   university: 'University', semester: 'Semester', academic_break: 'Academic break', course: 'Course',
   assignment: 'Assignment', rubric_criterion: 'Rubric criterion', timeline_event: 'Timeline item', research_source: 'Research source',
+  course_material: 'Course material',
 };
 
 export const FLAG_LABELS: Record<string, string> = {

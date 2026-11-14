@@ -20,6 +20,23 @@ export interface DateContext {
   semesterEnd?: string | null;
 }
 
+/**
+ * When only a term name such as "Fall 2026" is known, its usual calendar
+ * window is enough to place a month and day in the right year. Used only
+ * to resolve years, never stored as the semester's dates.
+ */
+export function approximateTermWindow(name: string | null | undefined): DateContext | null {
+  const m = /\b(spring|summer|fall|autumn|winter)\s+(\d{4})\b/i.exec(name ?? '');
+  if (!m) return null;
+  const y = Number(m[2]);
+  switch (m[1].toLowerCase()) {
+    case 'spring': return { semesterStart: `${y}-01-01`, semesterEnd: `${y}-05-31` };
+    case 'summer': return { semesterStart: `${y}-05-01`, semesterEnd: `${y}-08-31` };
+    case 'winter': return { semesterStart: `${y}-12-01`, semesterEnd: `${y + 1}-01-31` };
+    default: return { semesterStart: `${y}-08-01`, semesterEnd: `${y}-12-31` };
+  }
+}
+
 export interface DateMention {
   date: AcademicDate;
   start: number;

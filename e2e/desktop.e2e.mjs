@@ -49,60 +49,97 @@ const click = async (sid, xp) => {
 };
 const text = async (sid) => wd('POST', `/session/${sid}/execute/sync`, { script: 'return document.body.innerText', args: [] });
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const on = (days) => {
-  const d = new Date(Date.now() + days * 86400000);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-};
-const year = new Date(Date.now() - 80 * 86400000).getFullYear();
-// Synthetic course material with dates relative to today.
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const at = (days) => new Date(Date.now() + days * 86400000);
+const short = (days) => { const d = at(days); return `${MONTHS[d.getMonth()]} ${d.getDate()}`; };
+const isoDay = (days) => at(days).toISOString().slice(0, 10);
+const year = at(-60).getFullYear();
+const season = ['Spring', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Fall', 'Fall'][at(-60).getMonth()];
+
+// Synthetic Canvas "Modules" page with dates relative to today.
+const item = (type, title, days, pts) => [type, title, ...(days === null ? [] : [short(days)]), ...(pts === null ? [] : [`${pts} pts`]), 'ViewMust view in order to complete this module item'];
 const PASTE = [
-  `${['Spring', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Fall', 'Fall'][new Date().getMonth()]} ${year} Syllabus`,
-  'University of North Florida',
-  'Master of Science in Computing and Information Sciences',
-  'CIS 6930: Applied Machine Learning',
-  'Instructor: Dr. Jane Rivera',
-  `Classes begin ${on(-80)}`,
-  `Last day of classes: ${on(28)}`,
-  `Homework 7 due ${on(2)} at 11:59 PM ET (40 points)`,
-  `Discussion 9: initial post due ${on(3)} at 11:59 PM ET, replies due ${on(6)} at 11:59 PM ET`,
-  `Lab 4 due ${on(6)} at 5:00 PM ET`,
-  `Read Chapter 11 by ${on(8)}`,
-  `Final Exam: ${on(11)}`,
-  `Final Project due ${on(25)} at 5:00 PM`,
+  ' COURSE RESOURCES', 'Attachment', 'Course Handbook.pdf', 'Discussion Topic', 'Ask the Instructor',
+  'WEEK 11', ' WEEK 11', 'Complete All Items', 'Module Completed', 'Context Module Sub Header',
+  'READING ASSIGNMENT', ...item('Page', 'Week 11: Readings', null, null), ...item('Attachment', 'Algorithmic Fairness in Practice.pdf', null, null),
+  'Context Module Sub Header', 'LECTURE', ...item('Page', 'Week 11: Lecture', null, null),
+  'Context Module Sub Header', 'DISCUSSION QUESTIONS', ...item('Discussion Topic', 'Week 11: Discussion Question 1', 2, 20), ...item('Discussion Topic', 'Week 11: Discussion Question 2', 2, 20),
+  'Context Module Sub Header', 'WRITING ASSIGNMENT', ...item('Assignment', 'Week 11: Writing Assignment', 4, 150),
+  'Reminder: Project 3: Privacy Impact Assessment is due next week.',
+  'WEEK 12', ' WEEK 12', 'Complete All Items', 'Module In Progress', 'Context Module Sub Header',
+  'READING ASSIGNMENT', ...item('Page', 'Week 12: Readings', null, null), ...item('Attachment', 'Consent and Data Collection.pdf', null, null),
+  'Context Module Sub Header', 'LECTURE', ...item('Page', 'Week 12: Lecture', null, null),
+  'Context Module Sub Header', 'DISCUSSION QUESTIONS', ...item('Discussion Topic', 'Week 12: Discussion Question', 9, 20),
+  'Context Module Sub Header', 'WRITING ASSIGNMENT', ...item('Assignment', 'Week 12: Writing Assignment', 11, 150),
+  'FINAL WEEK', ' FINAL WEEK', 'Complete All Items', 'Module Locked',
+  ...item('Quiz', 'Final Exam', 18, 200), ...item('Assignment', 'Week 15: Final Research Paper', 23, 330),
 ].join('\n');
+
+/** Set a form field found by its label text, the way React expects. */
+async function fill(sid, labelText, value) {
+  await wd('POST', `/session/${sid}/execute/sync`, {
+    script: `
+      const label = [...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith(arguments[0]));
+      const el = label && (label.control || label.querySelector('input,select,textarea'));
+      if (!el) throw new Error('no field ' + arguments[0]);
+      const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, arguments[1]);
+      el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));`,
+    args: [labelText, value],
+  });
+}
 
 let sid = await session();
 try {
   await find(sid, "//h1[normalize-space()='Your semester']", 20000);
   await sleep(800);
   await shot(sid, '0-home-first-launch');
-  await click(sid, "//nav/button[contains(., 'Add information')]");
-  await find(sid, "//textarea[@id='paste']");
-  // Set the value the way React expects, then fire an input event.
-  await wd('POST', `/session/${sid}/execute/sync`, {
-    script: `const el = document.getElementById('paste'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, arguments[1]); el.dispatchEvent(new Event('input', { bubbles: true }));`,
-    args: [null, PASTE],
-  });
-  await shot(sid, '1-add-information');
-  await click(sid, "//button[normalize-space()='Extract information']");
-  await click(sid, "//button[starts-with(normalize-space(), 'Review ')]");
-  await find(sid, "//h1[normalize-space()='Review extracted information']");
+
+  // Semester setup with real fields.
+  await click(sid, "//nav[@aria-label='Main']/button[normalize-space()='Semester setup']");
+  await find(sid, "//h2[normalize-space()='Courses this semester']");
+  await fill(sid, 'University', 'Example State University');
+  await fill(sid, 'Degree or program', 'MS in Data Science');
+  await click(sid, "//button[normalize-space()='Save school']");
+  await find(sid, "//*[normalize-space()='✓ School saved']");
+  await fill(sid, 'Term', season);
+  await fill(sid, 'Year', String(year));
+  await fill(sid, 'First day', isoDay(-75));
+  await fill(sid, 'Last day', isoDay(30));
+  await click(sid, "//button[normalize-space()='Save semester']");
+  await find(sid, "//*[normalize-space()='✓ Semester saved']");
+  await fill(sid, 'Course code', 'DSC 6400');
+  await fill(sid, 'Course name', 'Data Ethics');
+  await fill(sid, 'Instructor (optional)', 'Dr. Ana Patel');
+  await click(sid, "//button[normalize-space()='Add course']");
+  await find(sid, "//*[normalize-space()='✓ DSC 6400 added']");
+  await fill(sid, 'Course code', 'STA 6166');
+  await fill(sid, 'Course name', 'Statistical Methods');
+  await fill(sid, 'Instructor (optional)', '');
+  await click(sid, "//button[normalize-space()='Add course']");
+  await find(sid, "//*[normalize-space()='✓ STA 6166 added']");
+  await shot(sid, '1-setup');
+
+  // Paste the Canvas page into the course.
+  await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Courses')]");
+  await click(sid, "//button[@aria-label='Open DSC 6400']");
+  await click(sid, "//button[@role='tab'][normalize-space()='Add material']");
+  await fill(sid, 'Paste anything for DSC 6400', PASTE);
+  await click(sid, "//button[normalize-space()='Extract']");
+  await find(sid, "//h3[contains(., 'Graded work and deadlines')]");
+  await wd('POST', `/session/${sid}/execute/sync`, { script: "[...document.querySelectorAll('h2')].find((h) => h.textContent.includes('Waiting for your review')).scrollIntoView({ block: 'start' }); window.scrollBy(0, -70);", args: [] });
+  await sleep(400);
   await shot(sid, '2-review');
-  await click(sid, "//button[normalize-space()='Approve all new items with no warnings']");
-  // Items with warnings (for example a time with no time zone) need a decision each.
-  for (let i = 0; i < 10; i++) {
-    const remaining = await wd('POST', `/session/${sid}/execute/sync`, { script: "return [...document.querySelectorAll('article button')].filter(b => b.innerText === 'Approve').length", args: [] });
-    if (!remaining) break;
-    await click(sid, "(//article//button[normalize-space()='Approve'])[1]");
-    await sleep(300);
-  }
-  await find(sid, "//*[normalize-space()='Nothing waiting for review.']", 15000);
-  await click(sid, "//nav/button[contains(., 'Home')]");
-  await find(sid, "//*[normalize-space()='Homework 7']");
-  const body1 = await text(sid);
-  assert.match(body1, /Lab 4/);
-  console.log('PASS import and approve through the desktop SQLite commands');
+  await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
+  await find(sid, "//*[normalize-space()='Nothing waiting for DSC 6400.']", 15000);
+  await click(sid, "//button[@role='tab'][normalize-space()='Timeline']");
+  await find(sid, "//button[normalize-space()='Week 11: Writing Assignment']");
+  await shot(sid, '3-course-timeline');
+  await click(sid, "//button[@role='tab'][normalize-space()='Readings and materials']");
+  await find(sid, "//*[normalize-space()='Algorithmic Fairness in Practice.pdf']");
+  await shot(sid, '4-course-materials');
+  console.log('PASS setup, course import and approval through the desktop SQLite commands');
 } catch (e) {
   console.error('PAGE TEXT:\n' + (await text(sid)));
   throw e;
@@ -113,19 +150,19 @@ try {
 await sleep(1500);
 sid = await session();
 try {
-  await find(sid, "//*[normalize-space()='Homework 7']", 20000);
+  await find(sid, "//button[normalize-space()='Week 11: Discussion Question 1']", 20000);
   await sleep(800);
-  await shot(sid, '3-home');
-  await click(sid, "//nav/button[contains(., 'Courses')]");
-  await find(sid, "//h2[contains(., 'CIS 6930')]");
-  await shot(sid, '5-courses');
-  await click(sid, "//button[normalize-space()='Open']");
+  await shot(sid, '5-home');
+  await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Courses')]");
+  await find(sid, "//button[@aria-label='Open DSC 6400']");
+  await shot(sid, '6-courses');
+  await click(sid, "//button[@aria-label='Open DSC 6400']");
+  await click(sid, "//button[@role='tab'][normalize-space()='Assignments']");
+  await click(sid, "//button[normalize-space()='Week 15: Final Research Paper']");
+  await find(sid, "//h2[normalize-space()='Requirements checklist']");
+  await shot(sid, '7-assignment-workspace');
   const body = await text(sid);
-  assert.match(body, /Requirements checklist/);
-  await shot(sid, '4-assignment-workspace');
-  await click(sid, "//nav/button[contains(., 'Features')]");
-  await find(sid, "//h1[normalize-space()='What this version can do']");
-  await shot(sid, '6-features');
+  assert.match(body, /Final Research Paper/);
   console.log('PASS data persisted after restart');
 } finally {
   await wd('DELETE', `/session/${sid}`);

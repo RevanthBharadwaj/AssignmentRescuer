@@ -13,7 +13,9 @@ import { detectFormat } from './input/formatDetection';
 import { CorruptFileError, UnsupportedFormatError, extractText } from './input/extractors';
 import { sanitiseImportedText } from './security/untrusted';
 import { classify } from './classify/classifier';
-import { extractEntities, rubricKey, type ExtractionContext } from './extract/entities';
+import { extractEntities, rubricKey, termCodeToSemester, type ExtractionContext } from './extract/entities';
+import { looksLikeModuleList, parseModuleList } from './extract/canvas';
+import { approximateTermWindow } from './extract/dates';
 import { proposeChanges } from './merge/merge';
 import { fnv1a, newId, normaliseCourseCode, normaliseKey, sha256Hex } from './util';
 
@@ -68,6 +70,7 @@ const MANUAL_KEYS: Record<EntityType, (f: Record<string, FieldValue>) => string>
   rubric_criterion: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|${normaliseKey(String(f.criterion ?? ''))}`,
   timeline_event: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|${String(f.kind ?? 'due')}|${normaliseKey(String(f.title ?? ''))}`,
   research_source: (f) => String(f.doi ?? f.title ?? '').toLowerCase(),
+  course_material: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|material|${normaliseKey(`${f.unit ?? ''} ${f.title ?? ''}`)}`,
 };
 
 export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Promise<ImportResult> {
@@ -174,6 +177,15 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
     }
   }
 
+  // Still no dates: a term name ("Fall 2026", "2026FA") places month and day.
+  if (!ctx.semesterStart || !ctx.semesterEnd) {
+    const named = ctx.semesterName
+      ?? classified.map((p) => p.source.hints.semester ?? termCodeToSemester(p.source.text.slice(0, 2000))).find(Boolean)
+      ?? null;
+    const approx = approximateTermWindow(named);
+    if (approx) Object.assign(ctx, approx);
+  }
+
   // Pass B: full extraction with the shared context.
   const allRecords: ExtractedRecord[] = [];
   for (const p of classified) {
@@ -196,6 +208,9 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
           extractionMethod: 'manual_entry', verificationStatus: 'verified', confirmationStatus: 'pending',
         },
       }];
+    } else if (looksLikeModuleList(p.source.text)) {
+      const hinted = p.source.hints.course ?? ctx.defaultCourseCode ?? null;
+      records = parseModuleList(p.source, ctx, hinted ? normaliseCourseCode(hinted) : null);
     } else {
       records = extractEntities(p.source, p.classifications, ctx).records;
     }

@@ -1,7 +1,21 @@
 import { createContext, useContext } from 'react';
 import type { AcademicService } from '../core/service';
 
+export type Route =
+  | { name: 'home' }
+  | { name: 'setup' }
+  | { name: 'courses' }
+  | { name: 'course'; code: string; tab?: CourseTab }
+  | { name: 'assignment'; id: string }
+  | { name: 'review' }
+  | { name: 'sources' }
+  | { name: 'features' }
+  | { name: 'add' };
+
+export type CourseTab = 'timeline' | 'assignments' | 'materials' | 'add';
+
 export interface AppContextValue {
+  go: (route: Route) => void;
   service: AcademicService;
   /** Bumped after every write so screens reload their data. */
   version: number;

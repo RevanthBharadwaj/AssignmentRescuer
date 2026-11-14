@@ -23,7 +23,7 @@ These come from the earlier project specification and are not built yet: the 12 
 
 ## Known limitations in milestone 1
 
-1. The classifier and extractor are rule based. They handle common syllabus, Canvas and assignment layouts; unusual layouts will miss items, which the student can add manually.
+1. The classifier and extractor are rule based. Canvas Modules pages have a dedicated parser; syllabus and assignment text use the general extractor. Other LMS layouts are untested.
 2. A date written without a year is resolved only when a semester window is known; otherwise it stays unknown and is flagged.
 3. US month/day order is assumed for numeric dates like 3/4/2027.
 4. Week or unit context carries forward until the next heading, so an item listed after the schedule may be tagged with the last week.
