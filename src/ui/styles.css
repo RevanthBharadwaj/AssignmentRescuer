@@ -750,10 +750,8 @@ button.small { font-size: 13px; padding: 6px 12px; }
 
 /* ---------- model picker ---------- */
 .model-list { display: grid; gap: 8px; margin: 10px 0; }
-.model-card { position: relative; display: grid; grid-template-columns: 1fr auto auto; gap: 4px 10px; align-items: center; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--gray-950); }
+.model-card { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--gray-950); }
 .model-card.on { border-color: var(--lime-400); }
-.model-card label { display: flex; flex-direction: row; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--ink); font-size: 15px; }
-.model-best { grid-column: 1 / 3; }
 .pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--lime-200); color: var(--gray-950); }
 .pill.alt { background: var(--olive); color: var(--lime-100); border: 1px solid var(--olive-line); }
 .setup-steps { grid-column: 1 / -1; margin: 6px 0 0; padding: 10px 12px 10px 28px; border-radius: var(--radius-sm); background: var(--surface); border: 1px dashed var(--gray-700); }
@@ -807,3 +805,21 @@ button.small { font-size: 13px; padding: 6px 12px; }
 .saved-sources summary { cursor: pointer; color: var(--lime-100); }
 .saved-sources .works { position: absolute; z-index: 15; max-width: 560px; padding: 10px; background: var(--surface); border: 1px solid var(--lime-400); border-radius: var(--radius); }
 .chat-compose textarea { min-height: 72px; max-height: 160px; }
+
+/* model cards: name and tags on one line, description and download underneath */
+.model-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.model-top .grow { flex: 1 1 auto; }
+.model-pick { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; color: var(--ink); font-size: 16px; cursor: pointer; }
+.model-top .pill { flex: 0 0 auto; width: auto; align-self: center; white-space: nowrap; }
+.model-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.model-foot .model-best { flex: 1 1 260px; }
+.download { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.download-confirm { padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--lime-400); background: var(--surface); max-width: 460px; }
+.download-confirm p { margin: 0 0 8px; }
+.download-busy { display: flex; align-items: center; gap: 10px; min-width: 240px; }
+.download-busy progress { flex: 1; height: 8px; accent-color: var(--lime-400); }
+.installed { font-size: 13px; color: var(--lime-200); font-family: var(--font-mono); white-space: nowrap; }
+.role-row .row { align-items: flex-start; }
+.parsed-courses li { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.parsed-courses li .x { margin-left: auto; padding: 0 9px; line-height: 1.5; font-size: 18px; background: transparent; color: var(--ink-soft); border: 1px solid var(--gray-700); border-radius: 99px; }
+.parsed-courses li .x:hover { color: var(--gray-950); background: var(--lime-200); border-color: var(--lime-200); }

@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 14: email reminders, chat tools, pinned message box (latest)**
+**Update 15: model downloads, fewer password prompts, remove buttons (latest)**
+
+1. Model cards redrawn (name and tags on one line). A Download button asks for confirmation, then downloads the model through the local Ollama server with a progress bar, starting `ollama serve` if needed; installed models show Installed. Model names are checked to be plain names, and only addresses on this computer are used.
+2. Keychain: secrets are read once per run and kept in memory, and checking whether a key exists no longer reads the secret, so macOS stops asking for the password again and again. Network commands now run off the window thread.
+3. A cross button removes rows from a pasted course list before adding; the Canvas "Click to add" label is dropped from course names.
+4. 191 Vitest tests and 14 Rust tests pass. Downloads and the keychain change were not tried against a real Ollama or a real macOS keychain from the sandbox.
+
+**Update 14: email reminders, chat tools, pinned message box**
 
 1. Reminders go by email from the student's own Gmail account (SMTP with an app password in the keychain) instead of text messages; Twilio is removed. The subject names the assignment, course and professor and the body is short bullets. One email covers a whole day.
 2. The source search panel is gone. The chat now uses tools picked by simple rules: search saved material, what is due, find sources, check a DOI. Each reply shows the tools it used and any sources found, with Save buttons.

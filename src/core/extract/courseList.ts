@@ -46,7 +46,8 @@ export function parseCourseList(text: string): ParsedCourse[] {
 
     // Strip Markdown link syntax but keep its URL.
     const url = URL_RE.exec(line)?.[1] ?? null;
-    const plain = line.replace(/^\s*[-*•]\s*/, '').replace(/^\[(.*)\]\(.*\)$/, '$1');
+    // "Click to add" is the star button's label in Canvas, not part of the course name.
+    const plain = line.replace(/^\s*[-*•]\s*/, '').replace(/^\[(.*)\]\(.*\)$/, '$1').replace(/\bclick to (?:add|remove)\s+/gi, '');
 
     const m = CANVAS_RE.exec(plain);
     if (m) {

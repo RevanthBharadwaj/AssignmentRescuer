@@ -116,3 +116,9 @@ export function guessIntent(text: string, titles: string[] = []): Intent {
   const n = CUES.filter((re) => re.test(text)).length;
   return n >= 3 ? 'assignment' : n === 0 ? 'general' : 'unsure';
 }
+
+/** Is a model already on this computer? Ollama lists "nomic-embed-text:latest" for the tag "nomic-embed-text". */
+export function isInstalled(installed: readonly string[], tag: string): boolean {
+  if (!tag) return false;
+  return installed.some((n) => n === tag || n === `${tag}:latest` || (!tag.includes(':') && n.split(':')[0] === tag));
+}

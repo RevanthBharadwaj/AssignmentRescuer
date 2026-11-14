@@ -69,7 +69,9 @@ export function Setup() {
   };
   useEffect(fillFromSaved, [data]);
 
-  const parsed = useMemo(() => parseCourseList(listText), [listText]);
+  const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => { if (!listText.trim()) setSkipped(new Set()); }, [listText]);
+  const parsed = useMemo(() => parseCourseList(listText).filter((c) => !skipped.has(c.code)), [listText, skipped]);
   if (!data) return <p className="muted">Loading…</p>;
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -195,6 +197,7 @@ export function Setup() {
                     <strong>{c.code}</strong> {c.name}
                     <span className="muted small">{[c.section && `section ${c.section}`, c.term].filter(Boolean).join(' · ')}</span>
                     {data.courses.some((x) => x.fields.code === c.code) && <span className="tag">already saved, will update</span>}
+                    <button type="button" className="x" aria-label={`Remove ${c.code} from this list`} title="Remove from this list" onClick={() => setSkipped(new Set([...skipped, c.code]))}>×</button>
                   </li>
                 ))}
               </ul>
@@ -202,6 +205,7 @@ export function Setup() {
             <button type="button" disabled={parsed.length === 0} onClick={() => run(`${parsed.length} course${parsed.length === 1 ? '' : 's'} added`, async () => {
               await service.addCourses(parsed);
               setListText('');
+              setSkipped(new Set());
             })}>{parsed.length ? `Add ${parsed.length} course${parsed.length === 1 ? '' : 's'}` : 'Add courses'}</button>
 
             <h3 className="sub">Or add one course</h3>

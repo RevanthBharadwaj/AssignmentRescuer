@@ -1,10 +1,11 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useApp } from '../AppContext';
+import { canDownload, installedModels, pullModel, type PullProgress } from '../ollamaClient';
 import { useAsync } from '../useAsync';
 import type { ConfirmedRecord } from '../../core/types';
 import { ANTHROPIC_MODELS, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
 import { completeAi, hasSecret, setSecret } from '../aiClient';
-import { CLOUD_SETUP, DEFAULT_EMBED_TAG, DEFAULT_LOCAL_TAG, DEFAULT_VISION_TAG, DEFAULT_WRITING_TAG, EMBED_MODELS, HELPER_MODELS, LOCAL_MODELS, ROLE_INFO, modelFor, modelLabel, pullCommand, stars, type Role } from '../../core/models';
+import { CLOUD_SETUP, DEFAULT_EMBED_TAG, DEFAULT_LOCAL_TAG, DEFAULT_VISION_TAG, DEFAULT_WRITING_TAG, EMBED_MODELS, HELPER_MODELS, LOCAL_MODELS, ROLE_INFO, isInstalled, modelFor, modelLabel, pullCommand, stars, type Role } from '../../core/models';
 import { errorMessage } from '../format';
 
 /* ---------- a saved AI note ---------- */
@@ -98,7 +99,7 @@ export const runAssignment = (service: ReturnType<typeof useApp>['service'], id:
 
 const PROVIDERS: { id: AiProvider; label: string; help: string }[] = [
   { id: 'none', label: 'Off', help: 'No AI. Everything else works as before.' },
-  { id: 'ollama', label: 'Free local model (Ollama)', help: 'Free and private. Runs on this computer; nothing leaves it. Pick a model below, then press Set up.' },
+  { id: 'ollama', label: 'Free local model (Ollama)', help: 'Free and private. Runs on this computer; nothing leaves it. Pick a model below, then press Download.' },
   { id: 'openai', label: 'OpenAI (ChatGPT models)', help: 'Needs an API key from platform.openai.com (paid per use). Material you analyze or paste into Chat is sent to OpenAI.' },
   { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Needs an API key from console.anthropic.com (paid per use). Material you analyze or paste into Chat is sent to Anthropic.' },
 ];
@@ -116,9 +117,48 @@ function InfoTip({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function RoleRow({ role, value, options, none, onChange, open, onSetup }: {
+const friendly = (status: string) => (/^pulling [0-9a-f]/i.test(status) ? 'downloading' : /^verifying/i.test(status) ? 'checking the file' : /^(writing|removing)/i.test(status) ? 'finishing' : status === 'success' ? 'done' : status || 'starting');
+
+/** Download a model with Ollama after the student confirms; shows progress; shows Installed when it is already here. */
+function DownloadButton({ tag, name, size, baseUrl, installed, onDone, onFallback }: {
+  tag: string; name: string; size: string; baseUrl: string; installed: string[] | null; onDone: () => void; onFallback: () => void;
+}) {
+  const [step, setStep] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [p, setP] = useState<PullProgress | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  if (!canDownload()) return <button type="button" className="secondary small" onClick={onFallback}>Set up</button>;
+  if (installed && isInstalled(installed, tag)) return <span className="installed" title="Already on this computer">Installed ✓</span>;
+  const pct = p && p.total > 0 ? Math.min(100, Math.floor((p.completed / p.total) * 100)) : null;
+  const start = async () => {
+    setStep('busy'); setErr(null); setP(null);
+    try { await pullModel(baseUrl, tag, setP); onDone(); } catch (e) { setErr(errorMessage(e)); } finally { setStep('idle'); }
+  };
+  return (
+    <div className="download">
+      {step === 'idle' && <button type="button" className="secondary small" onClick={() => setStep('confirm')}>Download</button>}
+      {step === 'confirm' && (
+        <div className="download-confirm" role="group" aria-label={`Download ${name}`}>
+          <p className="small">Download <b>{name}</b> ({size}) with Ollama on this computer? The app runs <code>{pullCommand(tag)}</code> for you, once. You can keep using the app while it downloads.</p>
+          <div className="row">
+            <button type="button" className="small" onClick={() => void start()}>Yes, download</button>
+            <button type="button" className="secondary small" onClick={() => setStep('idle')}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {step === 'busy' && (
+        <div className="download-busy" role="status">
+          <progress max={100} value={pct ?? undefined} aria-label={`Downloading ${name}`} />
+          <span className="small muted">{pct !== null ? `${pct}% · ` : ''}{friendly(p?.status ?? '')}</span>
+        </div>
+      )}
+      {err && <p role="alert" className="error small">{err}</p>}
+    </div>
+  );
+}
+
+function RoleRow({ role, value, options, none, onChange, open, onSetup, baseUrl, installed, onDone }: {
   role: Role; value: string; options: { tag: string; name: string; about: string; size: string; stars: number }[]; none: string;
-  onChange: (tag: string) => void; open: boolean; onSetup: (tag: string) => void;
+  onChange: (tag: string) => void; open: boolean; onSetup: (tag: string) => void; baseUrl: string; installed: string[] | null; onDone: () => void;
 }) {
   const info = ROLE_INFO[role];
   const chosen = options.find((o) => o.tag === value);
@@ -138,7 +178,7 @@ function RoleRow({ role, value, options, none, onChange, open, onSetup }: {
           <option value="">{none}</option>
           {options.map((o) => <option key={o.tag} value={o.tag}>{o.name} ({o.size})</option>)}
         </select>
-        {value && <button type="button" className="secondary small" onClick={() => { void navigator.clipboard?.writeText(pullCommand(value)); onSetup(value); }}>Set up</button>}
+        {value && <DownloadButton tag={value} name={chosen?.name ?? value} size={chosen?.size ?? ''} baseUrl={baseUrl} installed={installed} onDone={onDone} onFallback={() => { void navigator.clipboard?.writeText(pullCommand(value)); onSetup(value); }} />}
       </div>
       {open && value && (
         <ol className="setup-steps small">
@@ -159,6 +199,15 @@ export function AiSettingsCard() {
   const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [setup, setSetup] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<string[] | null>(null);
+  const [recheck, setRecheck] = useState(0);
+  const ollamaUrl = (draft ?? data?.s)?.ollamaUrl;
+  useEffect(() => {
+    if (!ollamaUrl) return;
+    let live = true;
+    void installedModels(ollamaUrl).then((l) => { if (live) setInstalled(l); });
+    return () => { live = false; };
+  }, [ollamaUrl, recheck]);
   if (!data) return null;
   const s = draft ?? data.s;
   const cloud = isCloud(s.provider);
@@ -217,21 +266,26 @@ export function AiSettingsCard() {
           <div className="model-list" role="radiogroup" aria-label="Free local models">
             {LOCAL_MODELS.map((m) => (
               <div key={m.tag} className={`model-card ${s.model === m.tag ? 'on' : ''}`}>
-                <label>
-                  <input type="radio" name="ai-model" checked={s.model === m.tag} onChange={() => setDraft({ ...s, model: m.tag })} aria-label={m.name} />
-                  <strong>{m.name}</strong>
+                <div className="model-top">
+                  <label className="model-pick">
+                    <input type="radio" name="ai-model" checked={s.model === m.tag} onChange={() => setDraft({ ...s, model: m.tag })} aria-label={m.name} />
+                    <strong>{m.name}</strong>
+                  </label>
                   {m.recommended && <span className="pill">{m.recommended}</span>}
                   {m.vision && <span className="pill alt">reads images</span>}
-                </label>
-                <InfoTip label={`About ${m.name}`}>
-                  <b>{m.name}</b>
-                  <span className="mono small">{m.hf}</span>
-                  <span>Quality for coursework: <span aria-label={`${m.stars} out of 5`}>{stars(m.stars)}</span></span>
-                  <span>{m.about}</span>
-                  <span>Download {m.size}, about {m.memory}. Licence: {m.licence}.</span>
-                </InfoTip>
-                <span className="muted small model-best">{m.best}</span>
-                <button type="button" className="secondary small" onClick={() => { void navigator.clipboard?.writeText(pullCommand(m.tag)); setSetup(m.tag); }}>Set up</button>
+                  <span className="grow" />
+                  <InfoTip label={`About ${m.name}`}>
+                    <b>{m.name}</b>
+                    <span className="mono small">{m.hf}</span>
+                    <span>Quality for coursework: <span aria-label={`${m.stars} out of 5`}>{stars(m.stars)}</span></span>
+                    <span>{m.about}</span>
+                    <span>Download {m.size}, about {m.memory}. Licence: {m.licence}.</span>
+                  </InfoTip>
+                </div>
+                <div className="model-foot">
+                  <span className="muted small model-best">{m.best}</span>
+                  <DownloadButton tag={m.tag} name={m.name} size={m.size} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onFallback={() => { void navigator.clipboard?.writeText(pullCommand(m.tag)); setSetup(m.tag); }} />
+                </div>
                 {setup === m.tag && (
                   <ol className="setup-steps small">
                     <li>Install Ollama from ollama.com (free) and open it.</li>
@@ -246,10 +300,10 @@ export function AiSettingsCard() {
             <input value={LOCAL_MODELS.some((m) => m.tag === s.model) ? '' : s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} placeholder="for example mistral" />
           </label>
           <h3>Other jobs, other models</h3>
-          <p className="muted small">The app can use a different free model for each job. Each runs on this computer. Pick one, press Set up, and run the command once.</p>
-          <RoleRow role="writing" value={s.writingModel ?? ''} none="Same as the everyday model" options={LOCAL_MODELS.filter((m) => !m.vision)} open={setup === 'writing'} onSetup={() => setSetup('writing')} onChange={(tag) => setDraft({ ...s, writingModel: tag })} />
-          <RoleRow role="vision" value={s.visionModel ?? ''} none="Not set up (images will not be read)" options={LOCAL_MODELS.filter((m) => m.vision)} open={setup === 'vision'} onSetup={() => setSetup('vision')} onChange={(tag) => setDraft({ ...s, visionModel: tag })} />
-          <RoleRow role="embed" value={s.embedModel ?? ''} none="Not set up (search by keywords only)" options={EMBED_MODELS} open={setup === 'embed'} onSetup={() => setSetup('embed')} onChange={(tag) => setDraft({ ...s, embedModel: tag })} />
+          <p className="muted small">The app can use a different free model for each job. Each runs on this computer. Pick one and press Download; the app gets it for you after you confirm.</p>
+          <RoleRow role="writing" value={s.writingModel ?? ''} none="Same as the everyday model" options={LOCAL_MODELS.filter((m) => !m.vision)} open={setup === 'writing'} onSetup={() => setSetup('writing')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, writingModel: tag })} />
+          <RoleRow role="vision" value={s.visionModel ?? ''} none="Not set up (images will not be read)" options={LOCAL_MODELS.filter((m) => m.vision)} open={setup === 'vision'} onSetup={() => setSetup('vision')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, visionModel: tag })} />
+          <RoleRow role="embed" value={s.embedModel ?? ''} none="Not set up (search by keywords only)" options={EMBED_MODELS} open={setup === 'embed'} onSetup={() => setSetup('embed')} baseUrl={s.ollamaUrl} installed={installed} onDone={() => setRecheck((n) => n + 1)} onChange={(tag) => setDraft({ ...s, embedModel: tag })} />
           <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => setDraft({ ...s, ollamaUrl: e.target.value })} /></label>
           <details className="helper-models">
             <summary>Search and checking models planned for later</summary>

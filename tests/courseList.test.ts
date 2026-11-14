@@ -33,6 +33,11 @@ describe('course list import', () => {
     expect(parseCourseList('All Courses\nTerm: 2026 Fall\nPublished\nhello world')).toEqual([]);
   });
 
+  it('drops the star button label Canvas copies in front of some courses', () => {
+    const [c] = parseCourseList('Click to add 2026FA Applied Practicum (BUS-799-SX1Y2)');
+    expect(c).toMatchObject({ code: 'BUS 799', name: 'Applied Practicum', term: 'Fall 2026', section: 'SX1Y2' });
+  });
+
   it('formats codes the way a title page shows them', () => {
     expect(hyphenCode('DSC 701A')).toBe('DSC-701A');
   });

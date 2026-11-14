@@ -99,6 +99,24 @@ describe('desktop UI', () => {
     expect(await screen.findByRole('button', { name: 'Open MGT 6200' })).toBeInTheDocument();
   });
 
+  it('removes unwanted rows from a pasted course list with the cross button before adding', async () => {
+    const service = await setup();
+    fireEvent.click(top('Semester setup'));
+    fireEvent.change(await screen.findByLabelText('Course list'), { target: { value: [
+      'Click to add 2026FA Applied Practicum (BUS-799-SX1Y2)',
+      '2026FA Strategic Management (BUS-610-7AB12)',
+      '2026FA Managerial Accounting (ACC-620A-SY01)',
+    ].join('\n') } });
+    const found = screen.getByRole('list', { name: 'Courses found' });
+    expect(within(found).getByText('Applied Practicum', { exact: false })).toBeInTheDocument();
+    expect(within(found).queryByText(/Click to add/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove BUS 799 from this list' }));
+    expect(within(screen.getByRole('list', { name: 'Courses found' })).queryByText('BUS 799')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 courses' }));
+    expect(await screen.findByText('✓ 2 courses added')).toBeInTheDocument();
+    expect((await service.repository.listRecords('course')).map((c) => c.fields.code)).toEqual(['BUS 610', 'ACC 620A']);
+  });
+
   it('adds courses from a pasted Canvas course list and lets each be modified', async () => {
     const service = await setup();
     fireEvent.click(top('Semester setup'));

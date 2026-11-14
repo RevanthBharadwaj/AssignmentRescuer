@@ -19,6 +19,24 @@ fn account(provider: &str) -> Result<&'static str, String> {
     }
 }
 
+/// Secrets read once per run. Reading the keychain again for every request makes
+/// macOS ask for the login password again and again.
+static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = std::sync::OnceLock::new();
+
+fn cache() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
+    CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The saved key or password, from the keychain the first time and from memory after that.
+pub fn secret(provider: &str, missing: &str) -> Result<String, String> {
+    if let Some(v) = cache().get(provider) {
+        return Ok(v.clone());
+    }
+    let v = entry(provider)?.get_password().map_err(|_| missing.to_string())?;
+    cache().insert(provider.to_string(), v.clone());
+    Ok(v)
+}
+
 pub fn entry(provider: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, account(provider)?).map_err(|e| format!("Keychain unavailable: {e}"))
 }
@@ -42,10 +60,12 @@ pub fn ai_set_key(provider: String, key: Option<String>) -> Result<(), String> {
     match key.map(strip).filter(|k| !k.is_empty()) {
         Some(k) => {
             check_key(&provider, &k)?;
-            e.set_password(&k).map_err(|e| format!("Could not save the key: {e}"))
+            e.set_password(&k).map_err(|e| format!("Could not save the key: {e}"))?;
+            cache().insert(provider.clone(), k);
+            Ok(())
         }
         None => match e.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Ok(()) | Err(keyring::Error::NoEntry) => { cache().remove(&provider); Ok(()) }
             Err(err) => Err(format!("Could not remove the key: {err}")),
         },
     }
@@ -53,7 +73,19 @@ pub fn ai_set_key(provider: String, key: Option<String>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn ai_has_key(provider: String) -> bool {
-    entry(&provider).and_then(|e| e.get_password().map_err(|e| e.to_string())).is_ok()
+    if cache().contains_key(&provider) {
+        return true;
+    }
+    // Ask whether the item exists without reading the secret, so no password prompt appears.
+    match entry(&provider) {
+        Ok(e) => match e.get_attributes() {
+            Ok(_) => true,
+            Err(keyring::Error::NoEntry) => false,
+            Err(keyring::Error::NoStorageAccess(_)) => false,
+            Err(_) => false,
+        },
+        Err(_) => false,
+    }
 }
 
 pub fn validate_local_url(url: &str) -> Result<String, String> {
@@ -103,7 +135,8 @@ fn conversation(history: &Option<Vec<Turn>>, prompt: &str) -> Vec<Value> {
     v
 }
 
-#[tauri::command]
+// Runs off the window thread so the app stays responsive while it waits on the network.
+#[tauri::command(async)]
 pub fn ai_complete(
     provider: String,
     model: String,
@@ -120,7 +153,7 @@ pub fn ai_complete(
     let json_mode = json_mode.unwrap_or(true);
     match provider.as_str() {
         "anthropic" => {
-            let key = entry("anthropic")?.get_password().map_err(|_| "No Anthropic API key saved. Add it in Semester setup → AI assistant.".to_string())?;
+            let key = secret("anthropic", "No Anthropic API key saved. Add it in Semester setup → AI assistant.")?;
             let body = json!({
                 "model": model,
                 "max_tokens": 4000,
@@ -141,7 +174,7 @@ pub fn ai_complete(
             if text.is_empty() { Err("Anthropic returned no text.".into()) } else { Ok(text) }
         }
         "openai" => {
-            let key = entry("openai")?.get_password().map_err(|_| "No OpenAI API key saved. Add it in Semester setup → AI assistant.".to_string())?;
+            let key = secret("openai", "No OpenAI API key saved. Add it in Semester setup → AI assistant.")?;
             let mut messages = vec![json!({ "role": "system", "content": system })];
             messages.extend(conversation(&history, &prompt));
             let mut body = json!({ "model": model, "max_completion_tokens": 4000, "messages": messages });
@@ -180,7 +213,8 @@ pub fn ai_complete(
 
 
 /// Reads a picture with a local vision model. The image never leaves this computer.
-#[tauri::command]
+// Runs off the window thread so the app stays responsive while it waits on the network.
+#[tauri::command(async)]
 pub fn ai_describe_image(model: String, base_url: Option<String>, image_base64: String, instruction: String) -> Result<String, String> {
     if image_base64.len() > 30_000_000 { return Err("That image is too large. Try a smaller screenshot.".into()); }
     let base = validate_local_url(base_url.as_deref().unwrap_or("http://localhost:11434"))?;
@@ -198,7 +232,8 @@ pub fn ai_describe_image(model: String, base_url: Option<String>, image_base64: 
 }
 
 /// Turns passages into number lists for search by meaning, with a local embedding model.
-#[tauri::command]
+// Runs off the window thread so the app stays responsive while it waits on the network.
+#[tauri::command(async)]
 pub fn ai_embed(model: String, base_url: Option<String>, texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
     if texts.is_empty() { return Ok(vec![]); }
     if texts.len() > 200 || texts.iter().map(|t| t.len()).sum::<usize>() > 400_000 { return Err("Too much text to search at once.".into()); }

@@ -24,7 +24,8 @@ pub fn validate(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+// Runs off the window thread so the app stays responsive while it waits on the network.
+#[tauri::command(async)]
 pub fn fetch_calendar_feed(url: String) -> Result<String, String> {
     validate(&url)?;
     let agent = ureq::AgentBuilder::new()
