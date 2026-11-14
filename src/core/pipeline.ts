@@ -10,7 +10,7 @@ import type {
   SourceDocument,
 } from './types';
 import { detectFormat } from './input/formatDetection';
-import { CorruptFileError, UnsupportedFormatError, extractText } from './input/extractors';
+import { CorruptFileError, NeedsOcrError, UnsupportedFormatError, extractText } from './input/extractors';
 import { sanitiseImportedText } from './security/untrusted';
 import { classify } from './classify/classifier';
 import { extractEntities, rubricKey, termCodeToSemester, type ExtractionContext } from './extract/entities';
@@ -36,7 +36,7 @@ export type ImportInput =
 export interface ImportError {
   inputName: string;
   format: InputFormat;
-  reason: 'unsupported_format' | 'corrupt_file' | 'empty_input';
+  reason: 'unsupported_format' | 'corrupt_file' | 'empty_input' | 'needs_ocr';
   message: string;
 }
 
@@ -48,8 +48,13 @@ export interface ImportedSource {
 
 export interface ImportResult {
   sources: ImportedSource[];
-  /** Inputs whose content was already imported earlier (same hash). */
-  duplicateInputs: { inputName: string; existingSourceId: string }[];
+  /**
+   * Inputs whose content was imported before. Content from an earlier
+   * import is read again (the course, semester or parser may have changed)
+   * and produces proposals as usual; an exact repeat within one import is
+   * skipped.
+   */
+  duplicateInputs: { inputName: string; existingSourceId: string; reprocessed: boolean }[];
   errors: ImportError[];
   proposals: ChangeProposal[];
 }
@@ -76,7 +81,7 @@ const MANUAL_KEYS: Record<EntityType, (f: Record<string, FieldValue>) => string>
 export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Promise<ImportResult> {
   const now = deps.now ?? (() => new Date().toISOString());
   const result: ImportResult = { sources: [], duplicateInputs: [], errors: [], proposals: [] };
-  const seenHashes = new Map(deps.existingSourceHashes);
+  const batchHashes = new Map<string, string>();
   const encoder = new TextEncoder();
 
   // Extract semester context first so dates without a year can resolve
@@ -111,20 +116,27 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
     }
 
     const hash = await sha256Hex(bytes);
-    const prior = seenHashes.get(hash);
-    if (prior) {
-      result.duplicateInputs.push({ inputName: name, existingSourceId: prior });
+    const inThisBatch = batchHashes.has(hash);
+    const earlier = deps.existingSourceHashes.get(hash) ?? null;
+    if (inThisBatch) {
+      result.duplicateInputs.push({ inputName: name, existingSourceId: batchHashes.get(hash) as string, reprocessed: false });
       continue;
     }
 
     let rawText: string;
+    let pageOffsets: number[] | null = null;
     try {
       if (format === 'unknown') throw new UnsupportedFormatError(format, `"${name}" is not a recognised or supported file type.`);
-      const ex = extractText(format, bytes);
+      const ex = await extractText(format, bytes);
       rawText = ex.text;
+      pageOffsets = ex.pageOffsets;
     } catch (e) {
       if (e instanceof UnsupportedFormatError) {
         result.errors.push({ inputName: name, format, reason: 'unsupported_format', message: e.message });
+        continue;
+      }
+      if (e instanceof NeedsOcrError) {
+        result.errors.push({ inputName: name, format, reason: 'needs_ocr', message: `"${name}": ${e.message}` });
         continue;
       }
       if (e instanceof CorruptFileError) {
@@ -139,8 +151,9 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
       result.errors.push({ inputName: name, format, reason: 'empty_input', message: `"${name}" contains no readable text.` });
       continue;
     }
-    const id = `src_${fnv1a(hash)}${fnv1a(importedAt)}`;
-    seenHashes.set(hash, id);
+    const id = earlier ?? `src_${fnv1a(hash)}${fnv1a(importedAt)}`;
+    batchHashes.set(hash, id);
+    if (earlier) result.duplicateInputs.push({ inputName: name, existingSourceId: earlier, reprocessed: true });
     pending.push({
       source: {
         id,
@@ -153,6 +166,7 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
         byteSize: bytes.length,
         hints: input.hints ?? {},
         securityFlags: flags,
+        pageOffsets,
       },
     });
   }
@@ -218,6 +232,12 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
     result.sources.push({ source: p.source, classifications: p.classifications, records });
   }
 
+  // Remember which course the student added each item to, so the item is
+  // reviewed there even when its text names a different course.
+  for (const s of result.sources) {
+    const into = s.source.hints.course ? normaliseCourseCode(s.source.hints.course) : null;
+    if (into) for (const r of s.records) r.provenance.importedInto = into;
+  }
   linkRubricsToAssignments(allRecords, deps.confirmedRecords);
   result.proposals = proposeChanges(allRecords, deps.confirmedRecords, now());
   return result;

@@ -5,6 +5,7 @@ import { addDays } from '../../core/extract/dates';
 import { remindersDueToday } from '../../core/reminders/deadlineReminders';
 import type { AcademicDate } from '../../core/types';
 import { formatDate, formatTime } from '../format';
+import { CountUp, CourseDot, StatusButton, Urgency, statusOf } from '../ux';
 
 export function Home() {
   const { service, version, refresh, today, go } = useApp();
@@ -30,19 +31,20 @@ export function Home() {
   const later = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! > weekEnd);
   const courseName = (code: unknown) => courses.find((c) => c.fields.code === code)?.fields.name;
 
-  const row = (r: (typeof deadlines)[number]) => {
+  const row = (r: (typeof deadlines)[number], i: number) => {
     const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
     const exam = r.fields.kind === 'exam' || r.fields.type === 'exam';
     return (
-      <li key={r.id}>
-        <span className="date">{formatDate(d)}</span>
+      <li key={r.id} className={`stagger ${statusOf(r) === 'submitted' ? 'is-done' : ''}`} style={{ ['--i' as string]: i }}>
+        <span className="date">{r.entityType === 'assignment' ? <StatusButton record={r} compact /> : <span className="status-spacer" />} {formatDate(d)}</span>
         <span className="title">
           {r.entityType === 'assignment'
             ? <button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button>
             : String(r.fields.title)}
         </span>
-        <span>
-          {r.fields.courseCode ? <button type="button" className="tag as-button" title={String(courseName(r.fields.courseCode) ?? '')} onClick={() => go({ name: 'course', code: String(r.fields.courseCode) })}>{String(r.fields.courseCode)}</button> : null}
+        <span className="row-end">
+          <Urgency record={r} />
+          {r.fields.courseCode ? <button type="button" className="tag as-button" title={String(courseName(r.fields.courseCode) ?? '')} onClick={() => go({ name: 'course', code: String(r.fields.courseCode) })}><CourseDot code={r.fields.courseCode} /> {String(r.fields.courseCode)}</button> : null}
           {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
           {exam ? <span className="tag kind-conflict">exam</span> : null}
         </span>
@@ -65,9 +67,9 @@ export function Home() {
         )}
 
         <div className="stats">
-          <div className="stat"><span className="num">{courses.length}</span><span className="what">course{courses.length === 1 ? '' : 's'} this semester</span></div>
-          <div className="stat"><span className="num">{thisWeek.length}</span><span className="what">due in the next 7 days</span></div>
-          <div className="stat"><span className="num">{pending}</span><span className="what">waiting for your review</span></div>
+          <button type="button" className="stat" onClick={() => go({ name: 'courses' })}><span className="num"><CountUp value={courses.length} /></span><span className="what">course{courses.length === 1 ? '' : 's'} this semester →</span></button>
+          <button type="button" className="stat" onClick={() => go({ name: 'calendar' })}><span className="num"><CountUp value={thisWeek.filter((r) => statusOf(r) !== 'submitted').length} /></span><span className="what">still due in the next 7 days →</span></button>
+          <button type="button" className="stat" onClick={() => go({ name: 'review' })}><span className="num"><CountUp value={pending} /></span><span className="what">waiting for your review →</span></button>
         </div>
       </section>
 
@@ -126,8 +128,8 @@ export function Home() {
           <span className="chip ghost">needs a date</span>
           <h2 id="undated-title">Mentioned but not dated</h2>
           <ul className="deadlines">
-            {undated.map((r) => (
-              <li key={r.id}>
+            {undated.map((r, i) => (
+              <li key={r.id} className="stagger" style={{ ['--i' as string]: i }}>
                 <span className="date">{typeof r.fields.dueNote === 'string' ? r.fields.dueNote : 'no date yet'}</span>
                 <span className="title"><button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button></span>
                 <span>{r.fields.courseCode ? <span className="tag">{String(r.fields.courseCode)}</span> : null}</span>

@@ -39,17 +39,19 @@ describe('import pipeline', () => {
     expect((due.newValue as { iso: string }).iso).toBe('2026-09-08');
   });
 
-  it('skips duplicate uploads within a batch and against earlier imports', async () => {
+  it('skips an exact repeat within one import and re-reads content imported earlier', async () => {
     const first = await runImport([
       { kind: 'file', name: 'a.txt', bytes: fixtureBytes('syllabus.txt') },
       { kind: 'file', name: 'copy of a.txt', bytes: fixtureBytes('syllabus.txt') },
     ], deps());
     expect(first.sources).toHaveLength(1);
-    expect(first.duplicateInputs[0].inputName).toBe('copy of a.txt');
+    expect(first.duplicateInputs[0]).toMatchObject({ inputName: 'copy of a.txt', reprocessed: false });
     const hashes = new Map([[first.sources[0].source.contentHash, first.sources[0].source.id]]);
     const again = await runImport([{ kind: 'text', text: fixture('syllabus.txt') }], { ...deps(), existingSourceHashes: hashes });
-    expect(again.sources).toHaveLength(0);
-    expect(again.duplicateInputs[0].existingSourceId).toBe(first.sources[0].source.id);
+    expect(again.sources).toHaveLength(1);
+    expect(again.sources[0].source.id).toBe(first.sources[0].source.id);
+    expect(again.duplicateInputs[0]).toMatchObject({ existingSourceId: first.sources[0].source.id, reprocessed: true });
+    expect(again.proposals.length).toBeGreaterThan(0);
   });
 
   it('reports unsupported, corrupt and empty inputs without stopping the batch', async () => {
@@ -63,7 +65,7 @@ describe('import pipeline', () => {
       { kind: 'text', text: fixture('assignment.txt') },
     ], deps());
     expect(r.errors.map((e) => [e.inputName, e.reason])).toEqual([
-      ['syllabus.pdf', 'unsupported_format'],
+      ['syllabus.pdf', 'corrupt_file'],
       ['shot.png', 'unsupported_format'],
       ['mystery.zip', 'unsupported_format'],
       ['broken.txt', 'corrupt_file'],

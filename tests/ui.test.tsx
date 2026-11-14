@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { App } from '../src/ui/App';
-import { approveAll, fixture, makeService } from './helpers';
+import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
 
 afterEach(cleanup);
 
@@ -168,6 +168,65 @@ describe('desktop UI', () => {
     expect(await lines()).toEqual(['Consent in Data Collection', 'Alex Student', 'Example University', 'DSC-6400: Data Ethics', 'Dr. Ana Patel', 'December 14, 2026']);
   });
 
+  it('shows deadlines on a month and week calendar, coloured by course', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
+    await approveAll(service);
+    fireEvent.click(dock('Calendar'));
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    const sep6 = screen.getByRole('gridcell', { name: '2026-09-06: 2 items' });
+    const pill = within(sep6).getByRole('button', { name: 'Week 1: Discussion Question 1' });
+    expect(pill.style.getPropertyValue('--c')).toMatch(/^#[0-9a-f]{6}$/);
+    fireEvent.click(sep6);
+    expect(await screen.findByRole('heading', { name: 'Sep 6, 2026' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'December 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Final Exam' })).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: /^2026-12-15/ })).toHaveTextContent('Last day of the semester');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    expect(screen.getAllByRole('gridcell')).toHaveLength(7);
+    // Hiding a course removes its items.
+    fireEvent.click(screen.getByRole('button', { name: /DSC 6400/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }));
+    expect(screen.queryByRole('button', { name: 'Week 1: Discussion Question 1' })).not.toBeInTheDocument();
+  });
+
+  it('marks work in progress and submitted, with undo and course progress', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
+    await approveAll(service);
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Assignments' }));
+    const status = await screen.findByRole('button', { name: 'Week 15: Final Research Paper: To do. Change status' });
+    fireEvent.click(status);
+    fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper: In progress. Change status' }));
+    expect(await screen.findByText('Marked “Week 15: Final Research Paper” as submitted')).toBeInTheDocument();
+    expect(await screen.findByText(/46% of points submitted/)).toBeInTheDocument();
+    const undos = screen.getAllByRole('button', { name: 'Undo' });
+    fireEvent.click(undos[undos.length - 1]);
+    expect(await screen.findByRole('button', { name: 'Week 15: Final Research Paper: In progress. Change status' })).toBeInTheDocument();
+  });
+
+  it('imports a PDF syllabus dropped into a course', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Add material' }));
+    const file = new File([fixtureBytes('syllabus.pdf')], 'syllabus.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText('Choose files for this course'), { target: { files: [file] } });
+    expect(await screen.findByText(/Found \d+ items for DSC 6400/, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select Homework 1' })).toBeChecked();
+  });
+
   it('shows old and new values for a changed deadline', async () => {
     const service = await setup();
     await service.import([{ kind: 'text', text: fixture('syllabus.txt') }]);
@@ -183,11 +242,11 @@ describe('desktop UI', () => {
   it('reports unsupported files honestly on the syllabus import page', async () => {
     await setup();
     fireEvent.click(top('Import a syllabus'));
-    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], 'syllabus.pdf', { type: 'application/pdf' });
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], 'schedule.png', { type: 'image/png' });
     fireEvent.change(await screen.findByLabelText('Choose files'), { target: { files: [file] } });
-    expect(await screen.findByText(/syllabus\.pdf/)).toBeInTheDocument();
+    expect(await screen.findByText(/schedule\.png/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Extract information' }));
-    expect(await screen.findByText(/Import of pdf files is not available yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/Import of png files is not available yet/)).toBeInTheDocument();
   });
 
   it('lists implemented, experimental and unavailable features', async () => {

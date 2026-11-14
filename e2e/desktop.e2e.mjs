@@ -4,13 +4,14 @@
 // Verifies: boot, paste import, review approval through the Rust SQLite layer,
 // and that confirmed data survives an app restart.
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Optional: SCREENSHOT_DIR=/some/dir saves PNGs of key screens.
 const SHOTS = process.env.SCREENSHOT_DIR;
 async function shot(sid, name) {
   if (!SHOTS) return;
+  await new Promise((r) => setTimeout(r, 900)); // let entrance animations finish
   const b64 = await wd('GET', `/session/${sid}/screenshot`);
   writeFileSync(join(SHOTS, `${name}.png`), Buffer.from(b64, 'base64'));
 }
@@ -150,6 +151,35 @@ try {
   await click(sid, "//button[@role='tab'][normalize-space()='Readings and materials']");
   await find(sid, "//*[normalize-space()='Algorithmic Fairness in Practice.pdf']");
   await shot(sid, '4-course-materials');
+
+  // Mark an item submitted from the timeline.
+  await click(sid, "//button[@role='tab'][normalize-space()='Timeline']");
+  await click(sid, "//button[@aria-label='Week 11: Discussion Question 1: To do. Change status']");
+  await click(sid, "//button[@aria-label='Week 11: Discussion Question 1: In progress. Change status']");
+  await find(sid, "//*[contains(., 'as submitted')]");
+
+  // Drop a PDF syllabus into the course it belongs to (PDF.js runs in the app's worker).
+  await click(sid, "//button[@role='tab'][normalize-space()='Add material']");
+  const pdf = readFileSync(new URL('../tests/fixtures/syllabus.pdf', import.meta.url)).toString('base64');
+  await wd('POST', `/session/${sid}/execute/sync`, {
+    script: `const bytes = Uint8Array.from(atob(arguments[0]), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], 'syllabus.pdf', { type: 'application/pdf' }));
+      const input = document.querySelector('input[aria-label="Choose files for this course"]');
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));`,
+    args: [pdf],
+  });
+  await find(sid, "//strong[starts-with(normalize-space(), 'Found ') and contains(., 'for DSC 6400')]", 20000);
+  await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
+  // The PDF's semester dates differ from the ones typed in setup: keep the typed ones.
+  await click(sid, "//article[contains(., 'Changed since you last confirmed it')]//button[normalize-space()='Reject']");
+  await find(sid, "//*[normalize-space()='Nothing waiting for DSC 6400.']", 15000);
+
+  await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Calendar')]");
+  await find(sid, "//div[@role='grid']");
+  await sleep(700);
+  await shot(sid, '9-calendar');
   console.log('PASS setup, course import and approval through the desktop SQLite commands');
 } catch (e) {
   console.error('PAGE TEXT:\n' + (await text(sid)));

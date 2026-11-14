@@ -22,28 +22,29 @@ describe('format detection', () => {
 });
 
 describe('extractors', () => {
-  it('extracts plain text and strips markdown markup', () => {
-    expect(extractText('txt', new TextEncoder().encode('﻿hello')).text).toBe('hello');
-    const md = extractText('markdown', fixtureBytes('canvas-copy.md')).text;
+  it('extracts plain text and strips markdown markup', async () => {
+    expect((await extractText('txt', new TextEncoder().encode('\uFEFFhello'))).text).toBe('hello');
+    const md = (await extractText('markdown', fixtureBytes('canvas-copy.md'))).text;
     expect(md).toContain('Homework 1 due Sep 6');
     expect(md).not.toContain('**');
     expect(md).not.toContain('https://');
   });
 
-  it('refuses formats that are not implemented instead of faking support', () => {
-    expect(() => extractText('pdf', fixtureBytes('fake.pdf'))).toThrow(UnsupportedFormatError);
-    expect(() => extractText('png', fixtureBytes('screenshot.png'))).toThrow(UnsupportedFormatError);
-    expect(() => extractText('xlsx', new Uint8Array([1]))).toThrow(UnsupportedFormatError);
+  it('refuses formats that are not implemented instead of faking support', async () => {
+    await expect(extractText('png', fixtureBytes('screenshot.png'))).rejects.toThrow(UnsupportedFormatError);
+    await expect(extractText('xlsx', new Uint8Array([1]))).rejects.toThrow(UnsupportedFormatError);
+    await expect(extractText('doc', new Uint8Array([1]))).rejects.toThrow(UnsupportedFormatError);
   });
 
-  it('reports invalid UTF-8 text as corrupt', () => {
-    expect(() => extractText('txt', fixtureBytes('corrupt.txt'))).toThrow(CorruptFileError);
+  it('reports invalid UTF-8 text and broken PDFs as corrupt', async () => {
+    await expect(extractText('txt', fixtureBytes('corrupt.txt'))).rejects.toThrow(CorruptFileError);
+    await expect(extractText('pdf', fixtureBytes('fake.pdf'))).rejects.toThrow(CorruptFileError);
   });
 
   it('keeps the feature registry honest', () => {
     const implementedInputs = FEATURES.filter((f) => f.id.startsWith('input.') && f.status === 'implemented').map((f) => f.id);
-    expect(implementedInputs.sort()).toEqual(['input.course_list', 'input.lms_modules', 'input.manual', 'input.markdown', 'input.multiple', 'input.plain_text', 'input.txt']);
-    for (const f of ['pdf', 'docx', 'png', 'jpeg', 'csv', 'xlsx', 'ics', 'json'] as const) expect(isFormatImplemented(f)).toBe(false);
+    expect(implementedInputs.sort()).toEqual(['input.course_list', 'input.docx', 'input.lms_modules', 'input.manual', 'input.markdown', 'input.multiple', 'input.pdf', 'input.plain_text', 'input.txt']);
+    for (const f of ['doc', 'png', 'jpeg', 'csv', 'xlsx', 'ics', 'json'] as const) expect(isFormatImplemented(f)).toBe(false);
     expect(FEATURES.find((f) => f.id === 'notifications.closed_app')?.status).toBe('unavailable');
   });
 });

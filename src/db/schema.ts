@@ -65,4 +65,7 @@ export const MIGRATIONS: string[] = [
     changed_at TEXT NOT NULL
   );
   `,
+  /* 2 */ `
+  ALTER TABLE sources ADD COLUMN page_offsets_json TEXT;
+  `,
 ];

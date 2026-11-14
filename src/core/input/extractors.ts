@@ -1,34 +1,17 @@
-import type { ExtractionMethod, InputFormat } from '../types';
+import type { InputFormat } from '../types';
 import { isFormatImplemented } from '../features';
+import { CorruptFileError, UnsupportedFormatError, type ExtractedText } from './errors';
+import { extractPdf } from './pdf';
+import { extractDocx } from './docx';
+
+export { CorruptFileError, NeedsOcrError, UnsupportedFormatError, type ExtractedText } from './errors';
 
 /**
- * Text extraction registry. Each format maps to an extractor. Formats whose
- * extractor has not been built and tested throw `UnsupportedFormatError`
- * instead of pretending to work.
+ * Text extraction registry. Formats whose extractor has not been built and
+ * tested throw `UnsupportedFormatError` instead of pretending to work.
  */
 
-export class UnsupportedFormatError extends Error {
-  constructor(public readonly format: InputFormat, message?: string) {
-    super(message ?? `Import of ${format} files is not available yet.`);
-    this.name = 'UnsupportedFormatError';
-  }
-}
-
-export class CorruptFileError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CorruptFileError';
-  }
-}
-
-export interface ExtractedText {
-  text: string;
-  method: ExtractionMethod;
-  /** Page boundaries as char offsets, when the format has pages. */
-  pageOffsets: number[] | null;
-}
-
-type Extractor = (bytes: Uint8Array) => ExtractedText;
+type Extractor = (bytes: Uint8Array) => ExtractedText | Promise<ExtractedText>;
 
 function decodeUtf8(bytes: Uint8Array): string {
   try {
@@ -60,10 +43,20 @@ const EXTRACTORS: Partial<Record<InputFormat, Extractor>> = {
   plain_text: plainText,
   txt: plainText,
   markdown,
+  pdf: extractPdf,
+  docx: extractDocx,
 };
 
-export function extractText(format: InputFormat, bytes: Uint8Array): ExtractedText {
+export async function extractText(format: InputFormat, bytes: Uint8Array): Promise<ExtractedText> {
   const fn = EXTRACTORS[format];
   if (!fn || !isFormatImplemented(format)) throw new UnsupportedFormatError(format);
   return fn(bytes);
+}
+
+/** Page number (1 based) for a character offset, or null for formats without pages. */
+export function pageAt(pageOffsets: number[] | null | undefined, offset: number): number | null {
+  if (!pageOffsets || pageOffsets.length === 0) return null;
+  let page = 1;
+  for (let i = 0; i < pageOffsets.length; i++) if (offset >= pageOffsets[i]) page = i + 1;
+  return page;
 }

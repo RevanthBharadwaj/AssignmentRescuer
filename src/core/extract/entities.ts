@@ -13,6 +13,7 @@ import type {
 import { hasLabel } from '../classify/classifier';
 import { findDates, type DateContext, type DateMention } from './dates';
 import { fnv1a, normaliseCourseCode, normaliseKey, parseCount } from '../util';
+import { pageAt } from '../input/extractors';
 
 /**
  * Deterministic academic entity extraction from text.
@@ -80,7 +81,8 @@ export function termCodeToSemester(text: string): string | null {
 }
 
 const POINTS_RE = /\b(\d{1,4}(?:\.\d+)?)\s*(points|pts|pt)\b/i;
-const WORDS_RE = /\b(\d[\d,]*)\s*(?:(?:-|–|to)\s*(\d[\d,]*)\s*)?words\b/i;
+// "1,500-2,000 words", "a 1,200-1,500 word paper", "a 750-word reflection"
+const WORDS_RE = /\b(\d[\d,]*)\s*(?:(?:-|–|to)\s*(\d[\d,]*)\s*)?[-\s]?words?\b/i;
 const PAGES_RE = /\b(\d{1,3})\s*(?:(?:-|–|to)\s*(\d{1,3})\s*)?(?:double[-\s]spaced\s+)?pages?\b/i;
 const SOURCES_RE = /\b(?:at\s+least|minimum\s+(?:of\s+)?|min\.?\s+|a\s+minimum\s+of\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:\w+\s+)?(scholarly|peer[-\s]reviewed|academic|credible|professional)\s+(?:\w+\s+)?(sources|references|articles|journal\s+articles|resources)\b/i;
 const CITATION_RE = /\b(APA(?:\s*(?:7(?:th)?|6(?:th)?)(?:\s+edition)?)?|MLA|Chicago|IEEE|Harvard|AMA)\b(?:\s+(?:style|format|formatting|citations?))?/;
@@ -182,7 +184,7 @@ export function extractEntities(
     sourceType: source.sourceType,
     originalName: source.originalName,
     importedAt: source.importedAt,
-    page: null,
+    page: line ? pageAt(source.pageOffsets, line.start) : null,
     imageRegion: null,
     textLocation: line ? { line: line.no, start: line.start, end: line.end } : null,
     excerpt: line ? line.text.trim().slice(0, 300) : text.trim().slice(0, 300),
@@ -353,7 +355,7 @@ export function extractEntities(
     const lineCourse = codesHere[0]?.code ?? currentCourse ?? fallbackCourse;
     const courseFlags: ReviewFlag[] = [];
     if (!lineCourse) courseFlags.push('course_unassigned');
-    if (hintedCourse && codesHere[0] && codesHere[0].code !== hintedCourse) courseFlags.push('course_mismatch');
+    if (hintedCourse && lineCourse && lineCourse !== hintedCourse) courseFlags.push('course_mismatch');
 
     const mod = MODULE_RE.exec(raw);
     const dates = findDates(raw, dateCtx).map((d) => ({ ...d, start: d.start + line.start, end: d.end + line.start }));

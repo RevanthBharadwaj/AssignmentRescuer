@@ -8,6 +8,8 @@ import { FIELD_LABELS, errorMessage, formatDate, formatValue } from '../format';
 import { SourceTrace } from './SourceTrace';
 import { ReviewList } from './ReviewList';
 import { TitlePage } from './TitlePage';
+import { readFileBytes } from './AddInfo';
+import { CourseDot, ProgressBar, StatusButton, Urgency, courseColor, courseProgress, statusOf } from '../ux';
 
 const dateOf = (r: ConfirmedRecord) => ((r.fields.dueDate ?? r.fields.date ?? null) as AcademicDate | null);
 // Date first, then title, so "Question 1" comes before "Question 2" on the same day.
@@ -45,12 +47,15 @@ export function CourseList() {
             const items = data.records.filter((r) => r.fields.courseCode === code && (r.entityType === 'assignment' || r.entityType === 'timeline_event'));
             const next = items.filter((r) => (dateOf(r)?.iso ?? '') >= today).sort((a, b) => sortKey(a).localeCompare(sortKey(b)))[0];
             const waiting = data.pending.filter((p) => p.candidate.fields.courseCode === code).length;
+            const prog = courseProgress(items);
             return (
-              <button key={c.id} type="button" className="course-card" onClick={() => go({ name: 'course', code })} aria-label={`Open ${code}`}>
+              <button key={c.id} type="button" className="course-card" style={{ ['--c' as string]: courseColor(code) }} onClick={() => go({ name: 'course', code })} aria-label={`Open ${code}`}>
                 <span className="code">{code}</span>
                 <span className="name">{String(c.fields.name ?? 'Name not set')}</span>
+                {c.fields.instructor ? <span className="meta">{String(c.fields.instructor)}</span> : null}
                 <span className="meta">{items.length} dated item{items.length === 1 ? '' : 's'}{waiting ? ` · ${waiting} to review` : ''}</span>
-                <span className="next">{next ? <>next: {String(next.fields.title)} · {formatDate(dateOf(next))}</> : 'nothing upcoming'}</span>
+                <span className="next">{next ? <>next: {String(next.fields.title)} · {formatDate(dateOf(next))}</> : items.length ? 'nothing upcoming' : 'add material to fill this course'}</span>
+                {prog.total > 0 && <><ProgressBar pct={prog.pct} color={courseColor(code)} label={`${code} progress`} /><span className="meta">{prog.pct}% of points submitted</span></>}
               </button>
             );
           })}
@@ -77,7 +82,8 @@ export function CoursePage({ code, tab = 'timeline' }: { code: string; tab?: Cou
   const { service, version, go } = useApp();
   const { data } = useAsync(async () => ({
     records: await service.repository.listRecords(),
-    pending: (await service.repository.listProposals('pending')).filter((p) => p.candidate.fields.courseCode === code || p.key === code),
+    pending: (await service.repository.listProposals('pending')).filter((p) =>
+      p.candidate.fields.courseCode === code || p.key === code || p.candidate.provenance.importedInto === code),
   }), [version, code]);
   if (!data) return <p className="muted">Loading…</p>;
 
@@ -90,13 +96,18 @@ export function CoursePage({ code, tab = 'timeline' }: { code: string; tab?: Cou
   return (
     <section aria-labelledby="course-title">
       <button type="button" className="link" onClick={() => go({ name: 'courses' })}>← all courses</button>
-      <div className="page-head">
-        <span className="chip">{code.toLowerCase()}</span>
+      <div className="page-head course-head" style={{ ['--c' as string]: courseColor(code) }}>
+        <span className="chip course-chip">{code.toLowerCase()}</span>
         <h1 id="course-title">{String(course?.fields.name ?? code)}</h1>
         <p className="muted">
           {course?.fields.instructor ? `${String(course.fields.instructor)} · ` : ''}
           {assignments.length} graded item{assignments.length === 1 ? '' : 's'} · {materials.filter((m) => m.fields.kind !== 'note').length} readings and files
+          {course?.fields.section ? ` · section ${String(course.fields.section)}` : ''}
         </p>
+        {assignments.length > 0 && (() => {
+          const prog = courseProgress(assignments);
+          return <div className="course-progress"><ProgressBar pct={prog.pct} color={courseColor(code)} label={`${code} progress`} /><span className="muted small">{prog.pct}% of points submitted · {assignments.filter((a) => statusOf(a) === 'submitted').length} of {assignments.length} done</span></div>;
+        })()}
       </div>
 
       <div className="tabs" role="tablist" aria-label={`${code} sections`}>
@@ -123,15 +134,17 @@ function Timeline({ code, items, notes }: { code: string; items: ConfirmedRecord
   return (
     <>
       <ul className="deadlines">
-        {sorted.filter((r) => dateOf(r)).map((r) => {
+        {sorted.filter((r) => dateOf(r)).map((r, i) => {
           const past = (dateOf(r)?.iso ?? '9999') < today;
+          const done = statusOf(r) === 'submitted';
           return (
-            <li key={r.id} className={past ? 'past' : ''}>
-              <span className="date">{formatDate(dateOf(r))}</span>
+            <li key={r.id} className={`stagger ${past && !done ? 'past' : ''} ${done ? 'is-done' : ''}`} style={{ ['--i' as string]: i }}>
+              <span className="date">{r.entityType === 'assignment' ? <StatusButton record={r} compact /> : <span className="status-spacer" />} {formatDate(dateOf(r))}</span>
               <span className="title">
                 {r.entityType === 'assignment' ? <button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button> : String(r.fields.title)}
               </span>
-              <span>
+              <span className="row-end">
+                <Urgency record={r} />
                 {r.fields.unit ? <span className="tag">{String(r.fields.unit).toLowerCase()}</span> : null}
                 {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
               </span>
@@ -170,11 +183,12 @@ function AssignmentTable({ code, items }: { code: string; items: ConfirmedRecord
   return (
     <>
       <table className="timeline">
-        <thead><tr><th>Due</th><th>Assignment</th><th>Type</th><th>Unit</th><th>Points</th></tr></thead>
+        <thead><tr><th>Status</th><th>Due</th><th>Assignment</th><th>Type</th><th>Unit</th><th>Points</th></tr></thead>
         <tbody>
-          {sorted.map((r) => (
-            <tr key={r.id}>
-              <td>{dateOf(r) ? formatDate(dateOf(r)) : <span className="warn-text">no date</span>}</td>
+          {sorted.map((r, i) => (
+            <tr key={r.id} className={`stagger ${statusOf(r) === 'submitted' ? 'is-done' : ''}`} style={{ ['--i' as string]: i }}>
+              <td><StatusButton record={r} /></td>
+              <td>{dateOf(r) ? <>{formatDate(dateOf(r))} <Urgency record={r} /></> : <span className="warn-text">no date</span>}</td>
               <td><button type="button" className="link plain" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button></td>
               <td>{String(r.fields.type ?? '').replace('_', ' ')}</td>
               <td>{String(r.fields.unit ?? '')}</td>
@@ -202,7 +216,7 @@ function Materials({ code, items }: { code: string; items: ConfirmedRecord[] }) 
     <div className="materials">
       {ordered.map(([unit, list]) => (
         <div key={unit} className="material-group">
-          <h3>{unit}</h3>
+          <h3><CourseDot code={code} /> {unit}</h3>
           <ul>
             {list.map((m) => (
               <li key={m.id}>
@@ -250,15 +264,22 @@ function AddToCourse({ code, pending }: { code: string; pending: ChangeProposal[
     }
   };
 
-  const onFiles = async (files: FileList) => {
+  const [dragging, setDragging] = useState(false);
+  const onFiles = async (files: FileList | File[]) => {
     const inputs: ImportInput[] = [];
-    for (const f of Array.from(files)) inputs.push({ kind: 'file', name: f.name, bytes: new Uint8Array(await new Response(f).arrayBuffer()) });
-    await run(inputs);
+    for (const f of Array.from(files)) inputs.push({ kind: 'file', name: f.name, bytes: await readFileBytes(f) });
+    if (inputs.length) await run(inputs);
   };
+  const found = result ? result.proposals.length : 0;
 
   return (
     <>
-      <div className="card">
+      <div
+        className={`card dropzone ${dragging ? 'dragging' : ''}`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) void onFiles(e.dataTransfer.files); }}
+      >
         <label htmlFor="course-paste" className="label">
           Paste anything for {code}: the Canvas Modules or Assignments page, a syllabus, assignment instructions, a rubric, an announcement
         </label>
@@ -266,19 +287,25 @@ function AddToCourse({ code, pending }: { code: string; pending: ChangeProposal[
         <div className="row">
           <button type="button" disabled={busy || !text.trim()} onClick={() => run([{ kind: 'text', text, label: `Pasted into ${code}` }])}>{busy ? 'Reading…' : 'Extract'}</button>
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>Choose files…</button>
-          <input ref={fileRef} type="file" multiple hidden aria-label="Choose files for this course" onChange={(e) => e.target.files && void onFiles(e.target.files)} />
-          <span className="muted small">TXT and Markdown files work today. PDF and Word arrive in the next milestone.</span>
+          <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.txt,.md,text/plain" aria-label="Choose files for this course" onChange={(e) => e.target.files && void onFiles(e.target.files)} />
+          <span className="muted small">or drop PDF, Word, TXT or Markdown files anywhere on this card.</span>
         </div>
         {error && <p role="alert" className="error">{error}</p>}
-        {result && (
-          <p className="muted small" aria-live="polite" style={{ marginTop: 12 }}>
-            {result.sources.map((s) => `Found ${s.records.length} items in ${s.source.originalName}.`).join(' ')}
-            {result.duplicateInputs.length ? ' Already imported, skipped.' : ''}
-            {result.errors.map((e) => ` ${e.message}`).join('')}
-            {result.sources.some((s) => s.source.securityFlags.some((f) => f.kind === 'prompt_injection_pattern')) ? ' Some text looked like instructions aimed at software; it was treated as plain text.' : ''}
-          </p>
-        )}
       </div>
+      {result && (
+        <div className={`card import-result ${found ? 'ok' : 'empty'}`} aria-live="polite">
+          <strong>{found ? `Found ${found} item${found === 1 ? '' : 's'} for ${code}` : 'Nothing new found'}</strong>
+          {result.sources.map((s) => (
+            <p key={s.source.id} className="small">
+              {s.source.originalName}: {s.records.length} item{s.records.length === 1 ? '' : 's'}
+              {result.duplicateInputs.some((d) => d.existingSourceId === s.source.id && d.reprocessed) ? ' (you imported this before; it was read again for this course)' : ''}
+            </p>
+          ))}
+          {result.errors.map((e) => <p key={e.inputName} className="error small">{e.message}</p>)}
+          {result.sources.some((s) => s.source.securityFlags.some((f) => f.kind === 'prompt_injection_pattern')) && <p className="small warning">Some text looked like instructions aimed at software; it was treated as plain text.</p>}
+          {found > 0 && <p className="small muted">Review them below, then approve. They appear in Timeline, Assignments and Calendar right after.</p>}
+        </div>
+      )}
 
       <h2 style={{ marginTop: 32 }}>Waiting for your review</h2>
       <ReviewList proposals={pending} emptyText={`Nothing waiting for ${code}.`} />
@@ -297,7 +324,7 @@ export function AssignmentWorkspace({ id }: { id: string }) {
   if (!record) return <p className="muted">This item no longer exists.</p>;
   const rubric = data.all.filter((r) => r.entityType === 'rubric_criterion' && r.fields.assignmentKey === record.key);
   const a = analyseAssignment(record, rubric);
-  const shown = Object.entries(record.fields).filter(([k, v]) => !['instructions', 'title', 'paperTitle'].includes(k) && v !== null);
+  const shown = Object.entries(record.fields).filter(([k, v]) => !['instructions', 'title', 'paperTitle', 'status', 'checklistDone'].includes(k) && v !== null);
   const isPaper = ['paper', 'essay', 'report', 'reflection', 'project', 'assignment'].includes(String(record.fields.type));
   const code = String(record.fields.courseCode ?? '');
 
@@ -308,6 +335,7 @@ export function AssignmentWorkspace({ id }: { id: string }) {
         <span className="chip">assignment workspace</span>
         <h1 id="ws-title">{String(record.fields.title)}</h1>
         <p className="muted">{dateOf(record) ? `Due ${formatDate(dateOf(record))}` : typeof record.fields.dueNote === 'string' ? record.fields.dueNote : 'No due date yet'}</p>
+        <div className="row"><StatusButton record={record} /> <Urgency record={record} /></div>
       </div>
       {!dateOf(record) && (
         <div className="card notice">
@@ -321,7 +349,28 @@ export function AssignmentWorkspace({ id }: { id: string }) {
       )}
       <div className="card">
         <h2>Requirements checklist</h2>
-        <ul className="checklist">{a.checklist.map((c) => <li key={c.id}><label><input type="checkbox" /> {c.text}</label></li>)}</ul>
+        <ul className="checklist">
+          {a.checklist.map((c) => {
+            const doneIds = Array.isArray(record.fields.checklistDone) ? (record.fields.checklistDone as string[]) : [];
+            const on = doneIds.includes(c.id);
+            return (
+              <li key={c.id} className={on ? 'is-done' : ''}>
+                <label>
+                  <input type="checkbox" checked={on} onChange={async () => {
+                    const next = on ? doneIds.filter((x) => x !== c.id) : [...doneIds, c.id];
+                    await service.repository.correctRecord(record.id, { checklistDone: next });
+                    refresh();
+                  }} /> {c.text}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {a.checklist.length > 0 && (() => {
+          const doneIds = Array.isArray(record.fields.checklistDone) ? (record.fields.checklistDone as string[]) : [];
+          const pct = Math.round((a.checklist.filter((c) => doneIds.includes(c.id)).length / a.checklist.length) * 100);
+          return <ProgressBar pct={pct} color={courseColor(record.fields.courseCode)} label="Checklist progress" />;
+        })()}
         {a.missing.length > 0 && <p className="warning">Not found in your material yet: {a.missing.join(', ')}. Paste the assignment instructions or rubric into the course to fill these in.</p>}
       </div>
       <div className="card">

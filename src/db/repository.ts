@@ -43,10 +43,11 @@ export class Repository {
 
   private async insertSource(s: SourceDocument, cls: Classification[]): Promise<void> {
     await this.db.execute(
-      `INSERT INTO sources (id, source_type, format, original_name, imported_at, content_hash, text, byte_size, hints_json, security_flags_json, classifications_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      // A re-read of earlier content keeps its original source row.
+      `INSERT OR IGNORE INTO sources (id, source_type, format, original_name, imported_at, content_hash, text, byte_size, hints_json, security_flags_json, classifications_json, page_offsets_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [s.id, s.sourceType, s.format, s.originalName, s.importedAt, s.contentHash, s.text, s.byteSize,
-        JSON.stringify(s.hints), JSON.stringify(s.securityFlags), JSON.stringify(cls)],
+        JSON.stringify(s.hints), JSON.stringify(s.securityFlags), JSON.stringify(cls), s.pageOffsets ? JSON.stringify(s.pageOffsets) : null],
     );
   }
 
@@ -64,6 +65,7 @@ export class Repository {
       hints: JSON.parse(String(r.hints_json)),
       securityFlags: JSON.parse(String(r.security_flags_json)),
       classifications: JSON.parse(String(r.classifications_json)),
+      pageOffsets: r.page_offsets_json ? JSON.parse(String(r.page_offsets_json)) : null,
     }));
   }
 

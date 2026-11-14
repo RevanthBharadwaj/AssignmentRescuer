@@ -21,7 +21,7 @@ const MANUAL_KINDS: { id: string; label: string; entity: EntityType }[] = [
 ];
 
 /** File.arrayBuffer with a FileReader fallback for older webviews. */
-function readFileBytes(f: Blob): Promise<Uint8Array> {
+export function readFileBytes(f: Blob): Promise<Uint8Array> {
   if (typeof f.arrayBuffer === 'function') return f.arrayBuffer().then((b) => new Uint8Array(b));
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -108,7 +108,7 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
         <div className="row">
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>Choose files…</button>
           <input ref={fileRef} type="file" multiple hidden aria-label="Choose files" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-          <span className="muted small">or drag and drop. Text and Markdown files are supported in this version; PDF, Word, images and spreadsheets will be reported as not yet available.</span>
+          <span className="muted small">or drag and drop. PDF, Word, TXT and Markdown files work. Screenshots, scanned PDFs and spreadsheets are reported as not available yet.</span>
         </div>
         {files.length > 0 && (
           <ul className="file-list">

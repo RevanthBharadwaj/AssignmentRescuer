@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppContext, localToday, type AppContextValue, type Route } from './AppContext';
 import type { AcademicService } from '../core/service';
 import { Home } from './components/Home';
@@ -8,10 +8,13 @@ import { AssignmentWorkspace, CourseList, CoursePage } from './components/Course
 import { Features, Sources } from './components/Sources';
 import { Setup } from './components/Setup';
 import { useAsync } from './useAsync';
+import { Calendar } from './components/Calendar';
+import { Toasts, type Toast } from './ux';
 
 /** The four main areas live in the bottom dock. */
 const DOCK: { route: Route['name']; label: string; verb: string }[] = [
   { route: 'home', label: 'Home', verb: 'this week' },
+  { route: 'calendar', label: 'Calendar', verb: 'see it' },
   { route: 'courses', label: 'Courses', verb: 'plan it' },
   { route: 'review', label: 'Review', verb: 'confirm it' },
   { route: 'sources', label: 'Imported material', verb: 'trace it' },
@@ -19,7 +22,7 @@ const DOCK: { route: Route['name']; label: string; verb: string }[] = [
 
 const AREA: Record<Route['name'], Route['name']> = {
   home: 'home', setup: 'home', add: 'home', courses: 'courses', course: 'courses', assignment: 'courses',
-  review: 'review', sources: 'sources', features: 'features',
+  review: 'review', sources: 'sources', features: 'features', calendar: 'calendar',
 };
 
 function useClock(): string {
@@ -45,7 +48,15 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
     setRoute(r);
     window.scrollTo?.({ top: 0 });
   }, []);
-  const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go }), [service, version, refresh, today, mode, go]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const nextToast = useRef(1);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const toast = useCallback((text: string, undo?: Toast['undo']) => {
+    const id = nextToast.current++;
+    setToasts((t) => [...t.slice(-2), { id, text, undo: undo ? async () => { await undo(); refresh(); } : undefined }]);
+    setTimeout(() => dismiss(id), 6000);
+  }, [dismiss, refresh]);
+  const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go, toast }), [service, version, refresh, today, mode, go, toast]);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
   const clock = useClock();
   const area = AREA[route.name];
@@ -64,7 +75,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           <span className="clock" aria-label="Local time">{clock}</span>
         </header>
 
-        <main>
+        <main key={`${route.name}-${'code' in route ? route.code : ''}-${'id' in route ? route.id : ''}`} className="route">
           {route.name === 'home' && <Home />}
           {route.name === 'setup' && <Setup />}
           {route.name === 'add' && <AddInfo onImported={() => go({ name: 'review' })} />}
@@ -74,7 +85,9 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           {route.name === 'review' && <Review />}
           {route.name === 'sources' && <Sources />}
           {route.name === 'features' && <Features />}
+          {route.name === 'calendar' && <Calendar />}
         </main>
+        <Toasts items={toasts} dismiss={dismiss} />
 
         <nav className="dock" aria-label="Workflow">
           {DOCK.map((d) => {

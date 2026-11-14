@@ -16,19 +16,30 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | # | Milestone | Status | Notes |
 |---|---|---|---|
 | 1 | Plain text and manual entry | ✅ Done | Pipeline, provenance, review, merging, onboarding, reminders |
-| 2 | PDF and DOCX | ⏳ Next | Includes DOC and RTF where supported, OCR for scanned PDFs |
+| 2 | PDF and DOCX | 🟡 Mostly done | PDF and DOCX work; DOC, RTF and OCR for scanned PDFs remain |
 | 3 | Images and screenshots | ⏳ Not started | PNG, JPEG, WebP, HEIC; OCR and an optional vision model with consent |
 | 4 | CSV and XLSX | ⏳ Not started | Also JSON and ICS calendar files |
 | 5 | Content classification | 🟡 Partly | Rule based classifier works; needs an evaluation set and accuracy targets |
 | 6 | Entity extraction | 🟡 Partly | Deterministic extractor works; needs an evaluation set and an AI fallback |
 | 7 | Student confirmation workflow | ✅ Done | Delivered with milestone 1 |
 | 8 | Timeline merging | 🟡 Partly | Record level merging done; unified timeline view not started |
-| 9 | Calendar integration | ⏳ Not started | Semester, monthly, weekly, daily and course views |
+| 9 | Calendar integration | 🟡 Mostly done | Month and week views, course colours, filters; a dedicated daily agenda remains |
 | 10 | Reminder integration | 🟡 Partly | Scheduling done; notifications while the app is closed not started |
 | 11 | AI quality evaluation and agents | ⏳ Not started | The 12 specialised agents come in here |
 | 12 | Cross platform packaging | 🟡 Partly | CI builds .dmg and .msi; code signing not set up |
 
 ## Done so far
+
+**PDF and Word import, calendar, status and a livelier interface (latest)**
+
+1. Milestone 2 core: PDF (PDF.js, bundled, offline) and Word .docx import. PDF lines are rebuilt from text positions so a title and its date drawn separately stay together; every item records its page. Word tables become rows, so rubric tables work. Scanned PDFs are detected and reported instead of returning nothing; OCR is still planned.
+2. Content imported before is now read again when added to a course, instead of being skipped as "already imported" (the likely cause of an empty course after re-pasting a Canvas page). The import result is a clear card with counts.
+3. Items added to a course are reviewed in that course even when their text names another course; the row says where the item will be filed.
+4. Calendar (milestone 9): month and week views, colours per course, today, breaks and first and last day marked, a legend to hide courses, a day panel, and click through to assignments.
+5. Status and progress: to do, in progress, submitted on every graded item with an undo toast; course progress by points on course cards and pages; urgency labels; checklist ticks are saved with a progress bar.
+6. Interaction and motion: count-up stats that link to their pages, staggered list entrances, page transitions, card hover lift, drag and drop onto a course, all respecting reduced motion.
+7. Word counts written as "a 1,200-1,500 word paper" or "a 750-word reflection" are now read.
+8. 112 Vitest tests; the desktop end to end test also drops a PDF into a course in the real app, resolves a semester date conflict and opens the calendar.
 
 **Setup polish, course list import and title page (latest)**
 
@@ -70,7 +81,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | runs in CI | runs in CI |
-| 101 Vitest tests | ✅ | runs in CI | runs in CI |
+| 112 Vitest tests | ✅ | runs in CI | runs in CI |
 | 3 Rust tests | ✅ | runs in CI | runs in CI |
 | Production frontend build | ✅ | runs in CI | runs in CI |
 | Desktop app compiles and launches | ✅ | runs in CI | runs in CI |
@@ -94,6 +105,6 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 
 1. Try the Canvas Assignments and Syllabus pages and one more course with real samples, and fix what they reveal.
 2. Confirm the CI run passes on Windows.
-3. Milestone 2: PDF and DOCX import, with page level provenance and OCR for scanned PDFs.
+3. Finish milestone 2: OCR for scanned PDFs together with screenshots (milestone 3).
 4. Add the names and roles of the 12 specialised agents from the original specification to `docs/ROADMAP.md`.
 5. Set up code signing for macOS and Windows installers (ad hoc signing first, Apple notarisation once there is a developer account).

@@ -1,6 +1,7 @@
 import type { AssignmentType, ExtractedRecord, FieldValue, ReviewFlag, SourceDocument } from '../types';
 import { findDates, type DateContext } from './dates';
 import { fnv1a, normaliseKey } from '../util';
+import { pageAt } from '../input/extractors';
 
 /**
  * Parser for text copied from an LMS module list (Canvas "Modules" page and
@@ -121,7 +122,7 @@ export function parseModuleList(
         sourceType: source.sourceType,
         originalName: source.originalName,
         importedAt: source.importedAt,
-        page: null,
+        page: pageAt(source.pageOffsets, first.start),
         imageRegion: null,
         textLocation: { line: first.no, start: first.start, end: last.end },
         excerpt: at.map((l) => l.text).join('\n').slice(0, 300),

@@ -38,7 +38,7 @@ export const FIELD_LABELS: Record<string, string> = {
   description: 'Description', maxPoints: 'Max points', performanceLevels: 'Performance levels', kind: 'Kind',
   date: 'Date', doi: 'DOI', authors: 'Authors', year: 'Year', journal: 'Journal', publicationType: 'Publication type',
   citationText: 'Citation text', assignmentTitle: 'Rubric for', assignmentKey: 'Linked assignment',
-  dueNote: 'Due (as mentioned)', section: 'Section', lmsUrl: 'Course link', paperTitle: 'Paper title',
+  dueNote: 'Due (as mentioned)', section: 'Section', lmsUrl: 'Course link', paperTitle: 'Paper title', status: 'Status', checklistDone: 'Checklist done',
 };
 
 export const ENTITY_LABELS: Record<string, string> = {

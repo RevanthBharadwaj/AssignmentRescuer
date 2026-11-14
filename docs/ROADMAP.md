@@ -5,14 +5,14 @@ The universal input system follows the sequence from the feature specification. 
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Plain text and manual entry (with pipeline, provenance, classification, extraction, review, merging, onboarding, reminder scheduling) | Done, verified on Linux; macOS and Windows pending CI |
-| 2 | PDF and DOCX (DOC and RTF where supported; OCR for scanned PDFs) | Not started |
+| 2 | PDF and DOCX (DOC and RTF where supported; OCR for scanned PDFs) | PDF and DOCX done; DOC, RTF and OCR remain |
 | 3 | Images and screenshots (PNG, JPEG, WebP, HEIC; OCR and optional vision model with consent) | Not started |
 | 4 | CSV and XLSX (JSON and ICS) keeping rows and columns | Not started |
 | 5 | Academic content classification: evaluation set and accuracy targets | Rule based classifier in place |
 | 6 | Entity extraction: evaluation set, AI fallback for low confidence cases | Deterministic extractor in place |
 | 7 | Student confirmation workflow | Done in milestone 1 |
 | 8 | Timeline merging: unified timeline view | Record level merging done; view not started |
-| 9 | Calendar integration: semester, monthly, weekly, daily, course views | Not started |
+| 9 | Calendar integration: semester, monthly, weekly, daily, course views | Month and week views done |
 | 10 | Reminder integration: OS notifications, including when the app is closed | Scheduling done; delivery while closed not started |
 | 11 | AI quality evaluation and the specialised agents | Not started |
 | 12 | Cross platform packaging tests (signed installers) | CI workflow builds installers; signing not set up |

@@ -10,12 +10,15 @@ export type Route =
   | { name: 'review' }
   | { name: 'sources' }
   | { name: 'features' }
-  | { name: 'add' };
+  | { name: 'add' }
+  | { name: 'calendar'; month?: string };
 
 export type CourseTab = 'timeline' | 'assignments' | 'materials' | 'add';
 
 export interface AppContextValue {
   go: (route: Route) => void;
+  /** Show a short confirmation, optionally with Undo. */
+  toast: (text: string, undo?: () => void | Promise<void>) => void;
   service: AcademicService;
   /** Bumped after every write so screens reload their data. */
   version: number;

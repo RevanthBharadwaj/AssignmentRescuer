@@ -51,6 +51,8 @@ export interface SourceDocument {
   /** Optional student supplied hints. */
   hints: ImportHints;
   securityFlags: SecurityFlag[];
+  /** Page start offsets in `text` for paged formats (PDF). */
+  pageOffsets?: number[] | null;
 }
 
 export interface ImportHints {
@@ -79,6 +81,8 @@ export interface Provenance {
   extractionMethod: ExtractionMethod;
   verificationStatus: VerificationStatus;
   confirmationStatus: ConfirmationStatus;
+  /** Course the student added this material to, when added from a course page. */
+  importedInto?: string | null;
 }
 
 export const CONTENT_LABELS = [

@@ -135,7 +135,11 @@ export function ReviewList({ proposals, emptyText }: { proposals: ChangeProposal
                             {p.kind === 'duplicate' ? ' · already saved' : ''}
                           </span>
                           {p.candidate.flags.length > 0 && (
-                            <span className="row-flags">{p.candidate.flags.map((fl) => FLAG_LABELS[fl] ?? fl).join(' · ')}</span>
+                            <span className="row-flags">
+                              {p.candidate.flags.map((fl) => fl === 'course_mismatch' && f.courseCode
+                                ? `The text names ${String(f.courseCode)}; it will be filed there`
+                                : FLAG_LABELS[fl] ?? fl).join(' · ')}
+                            </span>
                           )}
                         </td>
                         <td className="when">
