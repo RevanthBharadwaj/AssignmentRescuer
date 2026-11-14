@@ -14,7 +14,7 @@ export type Route =
   | { name: 'add' }
   | { name: 'calendar'; month?: string };
 
-export type AssignmentSection = 'overview' | 'brief' | 'instructions' | 'rubric' | 'context' | 'title';
+export type AssignmentSection = 'overview' | 'brief' | 'instructions' | 'rubric' | 'draft' | 'context' | 'title';
 
 export type CourseTab = 'home' | 'announcements' | 'syllabus' | 'modules' | 'assignments' | 'policies' | 'files' | 'add';
 

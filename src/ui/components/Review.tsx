@@ -2,6 +2,7 @@ import { useApp } from '../AppContext';
 import { Hint } from './Guide';
 import { useAsync } from '../useAsync';
 import { ReviewList } from './ReviewList';
+import { Suggestions } from './Suggestions';
 
 /** Inbox: everything still waiting for a decision, across all courses. */
 export function Review() {
@@ -16,6 +17,7 @@ export function Review() {
         <Hint id="review" />
         <p>{proposals.length === 0 ? 'Everything is confirmed.' : `${proposals.length} item${proposals.length === 1 ? '' : 's'} waiting across all courses. Changes and disagreements always need your decision.`}</p>
       </div>
+      <Suggestions />
       <ReviewList proposals={proposals} />
     </section>
   );

@@ -19,6 +19,7 @@ import { readFileBytes } from './AddInfo';
 import { Breadcrumbs } from './Breadcrumbs';
 import { UnitBlocks } from './UnitBlocks';
 import { BriefView } from './BriefView';
+import { DraftCheckView } from './DraftCheckView';
 import { AiButton, AiNote, runAnnouncement, runAssignment, runSyllabus } from './AiPanel';
 import { aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
@@ -81,7 +82,7 @@ export function CourseList() {
               {removing === code ? (
                 <p className="remove-ask small" role="alert">
                   Remove {code} and its {items.length} saved item{items.length === 1 ? '' : 's'}, waiting suggestions and imported material? This cannot be undone.{' '}
-                  <button type="button" className="link" onClick={async () => { await service.removeCourse(c.id); setRemoving(null); refresh(); toast(`${code} removed everywhere`); }}>Remove</button>{' '}
+                  <button type="button" className="link" onClick={async () => { await service.removeCourse(c.id); const u = (await service.undoList()).pop(); setRemoving(null); refresh(); toast(`${code} removed everywhere`, u ? async () => { await service.undo(u.id); refresh(); } : undefined); }}>Remove</button>{' '}
                   <button type="button" className="link muted-link" onClick={() => setRemoving(null)}>Keep</button>
                 </p>
               ) : (
@@ -755,6 +756,7 @@ const A_SECTIONS: { id: AssignmentSection; label: string }[] = [
   { id: 'brief', label: 'Brief' },
   { id: 'instructions', label: 'Instructions' },
   { id: 'rubric', label: 'Rubric' },
+  { id: 'draft', label: 'Check my draft' },
   { id: 'context', label: 'Course context' },
   { id: 'title', label: 'Title page' },
 ];
@@ -905,6 +907,7 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
         </div>
       )}
 
+      {section === 'draft' && <DraftCheckView id={record.id} />}
       {section === 'title' && isPaper && <TitlePage record={record} />}
     </CourseShell>
   );

@@ -259,6 +259,17 @@ export class Repository {
     return rec;
   }
 
+  /** Put a deleted record back exactly as it was (same id, same evidence). Does nothing if it already exists. */
+  async restoreRecord(r: ConfirmedRecord): Promise<void> {
+    if (await this.getRecord(r.id)) return;
+    await this.db.transaction(async () => {
+      await this.upsertRecord(r, true);
+      for (const ev of r.evidence) {
+        await this.db.execute('INSERT INTO evidence (record_id, source_id, provenance_json) VALUES (?,?,?)', [r.id, ev.sourceId, JSON.stringify(ev)]);
+      }
+    });
+  }
+
   async deleteRecord(id: string): Promise<void> {
     await this.db.execute('DELETE FROM records WHERE id = ?', [id]);
   }

@@ -34,6 +34,18 @@ import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat
 import { sourceKind, sourcesForCourse } from './courseContent';
 import { byTime } from './finished';
 import { addDays } from './extract/dates';
+import { ruleSuggestions, type Fix, type ReviewInput, type Suggestion } from './review';
+import { repeatMilestones, type Repeat } from './repeats';
+import { parseFindings, reviewPrompt } from './aiReview';
+import { checkDraft, draftPrompt, parseGaps, type DraftCheck, type DraftGap } from './draftCheck';
+import { wrapAsUntrustedData } from './security/untrusted';
+
+export type UndoOp =
+  | { op: 'restore_fields'; recordId: string; fields: Record<string, FieldValue> }
+  | { op: 'restore_record'; record: ConfirmedRecord }
+  | { op: 'remove_record'; recordId: string }
+  | { op: 'restore_setting'; key: string; value: unknown };
+export interface UndoEntry { id: string; at: string; label: string; ops: UndoOp[] }
 
 export interface SemesterInput {
   name: string;
@@ -456,6 +468,7 @@ export class AcademicService {
     for (const src of sourcesForCourse(code, await this.repo.listSources(), records)) {
       if (!usedElsewhere.has(src.id)) await this.repo.deleteSource(src.id, true);
     }
+    await this.journal(`Removed ${code}`, [course, ...owned].map((record) => ({ op: 'restore_record' as const, record })));
     for (const r of owned) await this.repo.deleteRecord(r.id).catch(() => undefined);
     await this.repo.deleteRecord(id);
     await this.clearChat(code);
@@ -595,7 +608,11 @@ export class AcademicService {
 
   async milestones(): Promise<Milestone[]> {
     const records = await this.repo.listRecords();
-    return milestonesFor(records, (await this.factsByCourse(records)).facts);
+    const own = milestonesFor(records, (await this.factsByCourse(records)).facts);
+    const reps = await this.repeats();
+    if (!reps.length) return own;
+    const inp = await this.reviewInput();
+    return [...own, ...repeatMilestones(reps, records, inp.today, inp.semester?.end ?? null)];
   }
 
   async briefFor(recordId: string): Promise<Brief | null> {
@@ -683,6 +700,157 @@ export class AcademicService {
     for (const [k, v] of Object.entries(sent)) if (v >= cutoff) keep[k] = v;
     for (const r of reminders) keep[r.id] = r.sendOn;
     await this.repo.setSetting('push.sent', keep);
+  }
+
+
+  // ---------- undo ----------
+
+  /** Everything the app changed on its own or on a suggestion, newest last, so each change can be taken back. */
+  async undoList(): Promise<UndoEntry[]> {
+    return this.repo.getSetting<UndoEntry[]>('undo.journal', []);
+  }
+
+  private async journal(label: string, ops: UndoOp[], now = new Date().toISOString()): Promise<string> {
+    const id = `u_${now.replace(/\D/g, '')}_${Math.random().toString(36).slice(2, 7)}`;
+    const list = await this.undoList();
+    await this.repo.setSetting('undo.journal', [...list, { id, at: now, label, ops }].slice(-60));
+    return id;
+  }
+
+  /** Reverse one journal entry. Later changes to the same item are overwritten only for the fields that were changed. */
+  async undo(entryId: string): Promise<boolean> {
+    const list = await this.undoList();
+    const entry = list.find((e) => e.id === entryId);
+    if (!entry) return false;
+    for (const op of [...entry.ops].reverse()) {
+      if (op.op === 'restore_fields') {
+        if (await this.repo.getRecord(op.recordId)) await this.repo.correctRecord(op.recordId, op.fields);
+      } else if (op.op === 'restore_record') await this.repo.restoreRecord(op.record);
+      else if (op.op === 'remove_record') await this.repo.deleteRecord(op.recordId).catch(() => undefined);
+      else await this.repo.setSetting(op.key, op.value);
+    }
+    await this.repo.setSetting('undo.journal', list.filter((e) => e.id !== entryId));
+    return true;
+  }
+
+  /** Change fields of a record and remember how to put them back. */
+  private async changeFields(recordId: string, fields: Record<string, FieldValue>, label: string): Promise<void> {
+    const rec = await this.repo.getRecord(recordId);
+    if (!rec) throw new Error('That item no longer exists.');
+    const old: Record<string, FieldValue> = {};
+    for (const k of Object.keys(fields)) old[k] = (rec.fields[k] ?? null) as FieldValue;
+    await this.journal(label, [{ op: 'restore_fields', recordId, fields: old }]);
+    await this.repo.correctRecord(recordId, fields);
+  }
+
+  // ---------- review ----------
+
+  async repeats(): Promise<Repeat[]> {
+    return this.repo.getSetting<Repeat[]>('repeats', []);
+  }
+
+  private async reviewInput(): Promise<ReviewInput> {
+    const records = await this.repo.listRecords();
+    const sem = (await this.onboarding()).currentSemester;
+    const range = (sem?.fields.dateRange ?? sem?.fields) as Record<string, unknown> | undefined;
+    const iso = (v: unknown) => (typeof v === 'string' ? v : (v as AcademicDate | null)?.iso ?? null);
+    return {
+      records, sources: await this.repo.listSources(), today: new Date().toISOString().slice(0, 10), repeats: await this.repeats(),
+      semester: sem ? { start: iso(range?.startDate ?? range?.start), end: iso(range?.endDate ?? range?.end) } : null,
+    };
+  }
+
+  /** Cheap checks on plain rules, plus any suggestions the AI review added that are still waiting. */
+  async suggestions(today?: string): Promise<Suggestion[]> {
+    const input = await this.reviewInput();
+    if (today) input.today = today;
+    const dismissed = new Set(await this.repo.getSetting<string[]>('review.dismissed', []));
+    const ai = await this.repo.getSetting<Suggestion[]>('review.ai', []);
+    const live = new Set(input.records.map((r) => r.id));
+    return [...ruleSuggestions(input), ...ai.filter((s) => s.fix.type === 'open' || ('recordId' in s.fix ? live.has(s.fix.recordId) : true))]
+      .filter((s) => !dismissed.has(s.id));
+  }
+
+  async dismissSuggestion(id: string): Promise<void> {
+    const d = await this.repo.getSetting<string[]>('review.dismissed', []);
+    await this.repo.setSetting('review.dismissed', [...new Set([...d, id])]);
+    const ai = await this.repo.getSetting<Suggestion[]>('review.ai', []);
+    await this.repo.setSetting('review.ai', ai.filter((s) => s.id !== id));
+  }
+
+  /** Apply one suggestion after the student approved it. Returns the journal entry so the screen can offer Undo. */
+  async applySuggestion(s: Suggestion): Promise<{ undoId: string | null; open?: { target: string; id: string } }> {
+    const f = s.fix;
+    let undoId: string | null = null;
+    if (f.type === 'open') return { undoId: null, open: { target: f.target, id: f.id } };
+    if (f.type === 'set_fields') await this.changeFields(f.recordId, f.fields, f.label);
+    else if (f.type === 'delete_record') {
+      const rec = await this.repo.getRecord(f.recordId);
+      if (rec) { undoId = await this.journal(`Removed “${String(rec.fields.title ?? rec.key)}”`, [{ op: 'restore_record', record: rec }]); await this.repo.deleteRecord(f.recordId); }
+    } else if (f.type === 'remove_course') {
+      await this.removeCourse(f.recordId);
+      const list = await this.undoList();
+      undoId = list[list.length - 1]?.id ?? null;
+    } else if (f.type === 'add_repeat') {
+      const old = await this.repeats();
+      undoId = await this.journal(`Repeating reminder for “${f.repeat.label}”`, [{ op: 'restore_setting', key: 'repeats', value: old }]);
+      await this.repo.setSetting('repeats', [...old.filter((r) => r.key !== f.repeat.key), f.repeat]);
+    }
+    if (f.type === 'set_fields') { const l = await this.undoList(); undoId = l[l.length - 1]?.id ?? null; }
+    await this.dismissSuggestion(s.id);
+    return { undoId };
+  }
+
+  /** The AI reads each course's syllabus and announcements next to what is saved, and suggests. Nothing changes until approved. */
+  async aiReview(complete: Completer, onlyCode?: string): Promise<{ added: number; skipped: string[] }> {
+    const records = await this.repo.listRecords();
+    const sources = await this.repo.listSources();
+    const found: Suggestion[] = [];
+    const skipped: string[] = [];
+    for (const c of records.filter((r) => r.entityType === 'course' && (!onlyCode || r.fields.code === onlyCode))) {
+      const code = String(c.fields.code);
+      const mine = sourcesForCourse(code, sources, records).filter((x) => ['syllabus', 'announcement'].includes(sourceKind(x)));
+      if (!mine.length) { skipped.push(code); continue; }
+      const material = mine.map((x) => `### ${x.originalName}\n${x.text}`).join('\n\n');
+      const assignments = records.filter((r) => r.entityType === 'assignment' && r.fields.courseCode === code);
+      const { text } = await this.runAi('review', complete, reviewPrompt(code, assignments, material));
+      for (const f of parseFindings(text, assignments, material)) {
+        const a = f.assignmentId ? assignments.find((x) => x.id === f.assignmentId) : null;
+        const id = `ai|${f.kind}|${code}|${a?.id ?? f.text.slice(0, 40)}|${f.due ?? ''}`;
+        const fix: Fix = f.kind === 'date' && a && f.due
+          ? { type: 'set_fields', recordId: a.id, fields: { dueDate: { ...(a.fields.dueDate as AcademicDate | null ?? { raw: f.due, time: null, timeZone: null }), iso: f.due, raw: f.due } as unknown as FieldValue }, label: `Change the date to ${f.due}` }
+          : f.kind === 'mismatch' && a ? { type: 'open', target: 'assignment', id: a.id, label: 'Check it' }
+          : { type: 'open', target: 'course_add', id: code, label: 'Add it' };
+        found.push({ id, kind: f.kind, by: 'ai', title: f.text, detail: `The course material says: “${f.quote}”`, fix });
+      }
+    }
+    const old = await this.repo.getSetting<Suggestion[]>('review.ai', []);
+    const have = new Set(old.map((s) => s.id));
+    const dismissed = new Set(await this.repo.getSetting<string[]>('review.dismissed', []));
+    const fresh = found.filter((s) => !have.has(s.id) && !dismissed.has(s.id));
+    await this.repo.setSetting('review.ai', [...old, ...fresh]);
+    return { added: fresh.length, skipped };
+  }
+
+  // ---------- draft check ----------
+
+  async checkMyDraft(assignmentId: string, draft: string, complete: Completer | null): Promise<DraftCheck & { ai: { gaps: DraftGap[]; strengths: string[]; model: string } | null }> {
+    const records = await this.repo.listRecords();
+    const a = records.find((r) => r.id === assignmentId);
+    if (!a) throw new Error('That assignment no longer exists.');
+    const code = String(a.fields.courseCode ?? '');
+    const sources = await this.repo.listSources();
+    const ctx = buildAssignmentContext(a, records, sources);
+    const rubric = ctx.rubric.map((r) => ({ criterion: String(r.fields.criterion ?? ''), maxPoints: typeof r.fields.maxPoints === 'number' ? r.fields.maxPoints : null, description: String(r.fields.description ?? '') }));
+    const { facts } = await this.syllabusFor(code);
+    const rules = checkDraft(draft, a, rubric, facts, records);
+    if (!complete) return { ...rules, ai: null };
+    const brief = await this.briefFor(assignmentId);
+    const briefText = [...(brief?.blocks ?? []).flatMap((b) => [b.title, ...b.lines.map((l) => `- ${l.text}`)]), ...ctx.instructions.map((i) => i.body)].join('\n').slice(0, 30_000);
+    const nonce = globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+    const req = draftPrompt(briefText, rubric, draft, (t, label) => wrapAsUntrustedData(t, label, nonce));
+    const { text, pick } = await this.completeFor('assignment', complete, req);
+    return { ...rules, ai: { ...parseGaps(text), model: pick.model } };
   }
 
   // ---------- chat ----------

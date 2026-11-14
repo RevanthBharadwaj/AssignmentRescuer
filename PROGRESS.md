@@ -30,7 +30,16 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 21: several AI providers at once, Claude for assignments, cheapest model for the rest, cost view (latest)**
+**Update 22: review suggestions, undo, repeating work, draft check (latest)**
+
+1. Review page now starts with Suggestions found on plain rules, no AI and no cost: the same assignment saved twice, due dates outside the semester, work whose title names another course, courses missing a name or professor, assignments with no date, courses with nothing in them, and items where every requirement is ticked but it is not marked submitted. Each has one button; nothing changes until you press it.
+2. "Ask AI to compare my course material" reads each course's syllabus and announcements next to what is saved and suggests date changes and missing items. Every finding must quote the real material or it is dropped. It only adds suggestions; you approve each one.
+3. Undo: every change a suggestion makes, and removing a course, is kept in a journal (last 60). A toast and a "recent changes" list offer Undo, and it restores the exact items, including a removed course with its assignments. Imported text deleted with a course is not restored.
+4. Repeating work: if the same kind of work came every week for three or more weeks (titles compared without their numbers, dates and times decide), the app offers a repeating reminder. Accepting it adds the coming weeks to Home, reminders and the calendar until the semester ends.
+5. Check my draft (new tab on every assignment): word count against the limit from this assignment, or from earlier similar assignments in the course, or from the syllabus rules; APA in text citations and a References section; which rubric lines look covered. An optional Claude pass lists what is missing. It points things out and never writes for you.
+6. 233 Vitest tests pass. Not tried against real keys, a real Ollama or in a real window.
+
+**Update 21: several AI providers at once, Claude for assignments, cheapest model for the rest, cost view**
 
 1. Claude, OpenAI and Ollama can all be switched on together in Semester setup, each with its own key or models, under one consent box.
 2. Analyzing an assignment always uses Claude (Sonnet 5.5 by default, Haiku 5.5 if you choose it). If Claude is off the chat says so instead of quietly using another model.
