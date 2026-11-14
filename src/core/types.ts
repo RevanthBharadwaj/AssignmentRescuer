@@ -125,7 +125,8 @@ export type EntityType =
   | 'rubric_criterion'
   | 'timeline_event'
   | 'course_material'
-  | 'research_source';
+  | 'research_source'
+  | 'ai_note';
 
 export type TimelineEventKind =
   | 'module'

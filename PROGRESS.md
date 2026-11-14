@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: November 14, 2026 (course pages and Canvas import)
+Last updated: November 14, 2026 (announcements and the AI assistant)
 
 ## Summary
 
@@ -25,12 +25,20 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | 8 | Timeline merging | 🟡 Partly | Record level merging done; unified timeline view not started |
 | 9 | Calendar integration | 🟡 Mostly done | Month and week views, course colours, filters; a dedicated daily agenda remains |
 | 10 | Reminder integration | 🟡 Partly | Scheduling done; notifications while the app is closed not started |
-| 11 | AI quality evaluation and agents | ⏳ Not started | The 12 specialised agents come in here |
+| 11 | AI quality evaluation and agents | 🟡 Started | Optional AI briefing assistant (Ollama or Claude) works; the 12 specialised agents and an evaluation set remain |
 | 12 | Cross platform packaging | 🟡 Partly | CI builds .dmg and .msi; code signing not set up |
 
 ## Done so far
 
-**Calendar feed and calendar files (latest)**
+**Announcements and the AI assistant (latest)**
+
+1. A pasted announcement no longer turns into separate review items. It only updates assignments you already have (for example a moved due date); mentions of other weeks, modules, the course or the semester are ignored, and anything already saved is skipped without asking.
+2. Optional AI assistant, off by default, set up in Semester setup step 05. A free local model through Ollama (localhost only) or Claude with your API key in the system keychain and explicit consent.
+3. With the assistant on, an added announcement is read straight away and a note is saved with a summary, a checklist of what to do and the rules that are easy to miss, linked to the assignments it mentions. **Make a plan with AI** on an assignment reads its instructions, rubric, announcements and syllabus rules.
+4. The material is fenced off as untrusted data in the prompt, the answer is checked before saving, and AI notes never change dates or records.
+5. Tested with a stand-in model in unit and interface tests, and end to end through the real Rust command with a stand-in Ollama server.
+
+**Calendar feed and calendar files**
 
 1. Paste the Canvas (or Blackboard) calendar feed link once in Semester setup; **Sync** downloads it through a Rust command that accepts only https calendar links (5 MB and 20 second limits, link never logged). This is the app's only network request.
 2. Calendar files and feeds are parsed directly: folded lines, escapes, all-day events, and UTC times converted to the student's own time zone (a Canvas 11:59 PM deadline stays 11:59 PM, not the next day).
@@ -105,7 +113,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | ✅ | ✅ |
-| 127 Vitest tests | ✅ | ✅ | ✅ |
+| 137 Vitest tests | ✅ | ✅ | ✅ |
 | Rust tests | ✅ | ✅ | ✅ |
 | Production frontend build | ✅ | ✅ | ✅ |
 | Desktop app compiles and launches | ✅ | ✅ | ✅ (compiles; not launched in CI) |
@@ -129,6 +137,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 
 1. Try the Canvas Assignments and Syllabus pages and one more course with real samples, and fix what they reveal.
 2. Try the real Canvas calendar feed and report anything it gets wrong.
+2b. Try the AI assistant with a real local model and with Claude on real announcements, and keep the checklist ticks between visits.
 3. Finish milestone 2: OCR for scanned PDFs together with screenshots (milestone 3).
 4. Add the names and roles of the 12 specialised agents from the original specification to `docs/ROADMAP.md`.
 5. Set up code signing for macOS and Windows installers (ad hoc signing first, Apple notarisation once there is a developer account).

@@ -661,3 +661,16 @@ details[open].module > summary::before, details[open].section > summary::before 
 /* ---------- calendar feed ---------- */
 .feed-compact { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
 input[type='url'] { width: 100%; font-family: var(--font-mono); font-size: 13px; }
+
+/* ---------- AI notes ---------- */
+.ai-note { margin-top: 16px; padding: 16px 18px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--lime-500) 35%, transparent); background: color-mix(in srgb, var(--lime-500) 6%, transparent); }
+.ai-note-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 6px; }
+.ai-note h4 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-400); }
+.ai-note .checklist li.is-done { opacity: .55; text-decoration: line-through; }
+.ai-note .cautions { margin: 0; padding-left: 18px; }
+.kind-badge.k-ai { background: var(--lime-500); color: #0b0b0b; }
+.ai-run { display: inline-flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.ai-btn { background: transparent; color: var(--lime-500); border: 1px solid var(--lime-500); }
+.ai-btn:hover:not(:disabled) { background: var(--lime-500); color: #0b0b0b; }
+.consent { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; font-size: 14px; }
+.consent input { margin-top: 3px; }

@@ -5,6 +5,7 @@ import type { AcademicDate, ConfirmedRecord } from '../../core/types';
 import { parseCourseList } from '../../core/extract/courseList';
 import { dateFromInputs, errorMessage, formatDate } from '../format';
 import { FeedCard } from './FeedCard';
+import { AiSettingsCard } from './AiPanel';
 
 /**
  * Semester setup. Saved sections are shown read-only with a Modify button;
@@ -224,6 +225,15 @@ export function Setup() {
           <div>
             <h2>Calendar feed <span className="muted small">optional</span></h2>
             <FeedCard />
+          </div>
+        </li>
+
+        {/* 05 AI assistant */}
+        <li className="card">
+          <span className="n">05</span>
+          <div>
+            <h2>AI assistant <span className="muted small">optional</span></h2>
+            <AiSettingsCard />
           </div>
         </li>
       </ol>

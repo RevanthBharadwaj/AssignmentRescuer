@@ -76,7 +76,8 @@ describe('import pipeline', () => {
   });
 
   it('treats malicious document text as data and flags affected records', async () => {
-    const r = await runImport([{ kind: 'text', text: fixture('malicious.txt') }], deps());
+    // Read as general material: announcements only update work already saved.
+    const r = await runImport([{ kind: 'text', text: fixture('malicious.txt'), hints: { material: 'other' } }], deps());
     const src = r.sources[0].source;
     expect(src.securityFlags.some((f) => f.kind === 'prompt_injection_pattern')).toBe(true);
     // The real deadline is still extracted; nothing was marked complete.

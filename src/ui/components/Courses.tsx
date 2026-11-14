@@ -14,6 +14,9 @@ import { ReviewList } from './ReviewList';
 import { TitlePage } from './TitlePage';
 import { readFileBytes } from './AddInfo';
 import { Breadcrumbs } from './Breadcrumbs';
+import { AiButton, AiNote, runAnnouncement, runAssignment } from './AiPanel';
+import { aiReady } from '../../core/ai';
+import { completeAi } from '../aiClient';
 import { CourseDot, ProgressBar, StatusButton, Urgency, courseColor, courseProgress, statusOf } from '../ux';
 
 const dateOf = (r: ConfirmedRecord) => ((r.fields.dueDate ?? r.fields.date ?? null) as AcademicDate | null);
@@ -316,6 +319,8 @@ function DueList({ items }: { items: ConfirmedRecord[] }) {
 /* ================= announcements ================= */
 
 function Announcements({ d }: { d: CourseData }) {
+  const { service, version } = useApp();
+  const { data: notes } = useAsync(() => service.repository.listRecords('ai_note'), [version]);
   const list = d.sources.filter((s) => sourceKind(s) === 'announcement').map(toAnnouncement).sort((a, b) => b.date.localeCompare(a.date));
   return (
     <>
@@ -326,6 +331,15 @@ function Announcements({ d }: { d: CourseData }) {
           <h2>{a.title}</h2>
           <p className="pre">{a.body}</p>
           <p className="muted small">From {a.source.originalName}</p>
+          {(() => {
+            const note = notes?.find((n) => n.fields.sourceId === a.source.id);
+            return (
+              <>
+                {note && <AiNote note={note} />}
+                <AiButton label={note ? 'Analyze again' : 'Analyze with AI'} run={() => runAnnouncement(service, a.source.id)} />
+              </>
+            );
+          })()}
         </article>
       ))}
     </>
@@ -560,7 +574,8 @@ const KIND_HELP: Record<MaterialKind, string> = {
 };
 
 function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initialKind?: MaterialKind; forAssignment?: string }) {
-  const { service, refresh } = useApp();
+  const { service, refresh, go } = useApp();
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const [kind, setKind] = useState<MaterialKind | 'auto'>(initialKind ?? (forAssignment ? 'instructions' : 'auto'));
   const [target, setTarget] = useState<string>(forAssignment ?? '');
   const [text, setText] = useState('');
@@ -583,6 +598,19 @@ function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initial
     try {
       const r = await service.importForCourse(d.code, inputs.map((i) => ({ ...i, hints: { ...hints(), ...(i.hints ?? {}) } }) as ImportInput));
       setResult(r);
+      setAiNote(null);
+      // An announcement is read by the AI straight away when it is turned on.
+      const anns = r.sources.filter((s) => sourceKind({ ...s.source, classifications: s.classifications }) === 'announcement');
+      if (anns.length && aiReady(await service.aiSettings())) {
+        setAiNote('working');
+        try {
+          for (const s of anns) await service.analyzeAnnouncement(s.source.id, completeAi);
+          setAiNote('done');
+          refresh();
+        } catch (e) {
+          setAiNote(`The AI could not read it: ${errorMessage(e)}`);
+        }
+      }
       if (r.sources.length) setText('');
       refresh();
     } catch (e) {
@@ -597,6 +625,7 @@ function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initial
     if (inputs.length) await run(inputs);
   };
   const found = result ? result.proposals.length : 0;
+  const isAnnouncement = !!result?.sources.some((s) => sourceKind({ ...s.source, classifications: s.classifications }) === 'announcement');
 
   return (
     <>
@@ -652,6 +681,11 @@ function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initial
           ))}
           {result.errors.map((e) => <p key={e.inputName} className="error small">{e.message}</p>)}
           {found > 0 && <p className="small muted">Review below, then approve.</p>}
+          {isAnnouncement && found === 0 && <p className="small">No new dates or assignments in it. It is saved under Announcements and shown on the assignments it mentions.</p>}
+          {isAnnouncement && found > 0 && <p className="small muted">These are changes to assignments you already have (for example a new due date).</p>}
+          {aiNote === 'working' && <p className="small">✦ The AI is reading the announcement…</p>}
+          {aiNote === 'done' && <p className="small">✦ AI note saved. <button type="button" className="link" onClick={() => go({ name: 'course', code: d.code, tab: 'announcements' })}>See what to do →</button></p>}
+          {aiNote && aiNote !== 'working' && aiNote !== 'done' && <p className="small error">{aiNote}</p>}
         </div>
       )}
       <h2 style={{ marginTop: 32 }}>Waiting for your review</h2>
@@ -680,6 +714,7 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
   const code = String(record?.fields.courseCode ?? '');
   const d = useCourse(code);
   const [date, setDate] = useState('');
+  const { data: aiNotes } = useAsync(async () => (record ? service.aiNotesFor(record.key) : []), [version, record?.key]);
   if (!data || !d) return <p className="muted">Loading…</p>;
   if (!record) return <p className="muted">This item no longer exists.</p>;
 
@@ -751,6 +786,12 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
               </p>
             )}
           </div>
+          <div className="card ai-card">
+            <h2>✦ AI help</h2>
+            {(aiNotes ?? []).length === 0 && <p className="muted small">Ask the AI to read this assignment with its instructions, rubric, announcements and syllabus rules, and write a plan.</p>}
+            {(aiNotes ?? []).map((n) => <AiNote key={n.id} note={n} />)}
+            <AiButton label={(aiNotes ?? []).some((n) => n.fields.kind === 'assignment') ? 'Make the plan again' : 'Make a plan with AI'} run={() => runAssignment(service, record.id)} />
+          </div>
           {(ctx.announcements.length > 0 || ctx.policies.length > 0) && (
             <div className="card notice">
               <h2>From your course</h2>
@@ -800,6 +841,7 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
       {section === 'context' && (
         <div className="context">
           <p className="muted">What your course says that applies to this {String(record.fields.type ?? 'assignment').replace('_', ' ')}. Every item shows where it came from.</p>
+          {(aiNotes ?? []).filter((n) => n.fields.kind === 'announcement').map((n) => <div key={n.id} className="card"><AiNote note={n} /></div>)}
           <ContextGroup title="Announcements about this assignment" empty="No announcement mentions it." items={ctx.announcements} />
           <ContextGroup title="Syllabus rules that apply" empty="No syllabus or policies added yet." items={ctx.policies} />
           <ContextGroup title={`Readings and notes for ${String(record.fields.unit ?? 'this unit')}`} empty="No readings for this unit." items={ctx.readings} />

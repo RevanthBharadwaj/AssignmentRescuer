@@ -58,6 +58,12 @@ Records match on exact key first (for example `CIS 6930|homework 1`). Assignment
 
 `src/core/courseContent.ts` decides what each source is (`sourceKind`: the student's choice, else inferred from the text), which sources belong to a course, how a document splits into sections, which sections state rules (`policySections`, tagged by topic), and what context an assignment gets (`buildAssignmentContext`). Context is ranked by the topics that matter for the kind of work, with topics named in a section heading counting more than ones mentioned in passing. Announcements are linked to an assignment by its title, or by the same numbers in the same order together with the same kind of work in one sentence.
 
+## Announcements and the AI assistant
+
+`src/core/announcements.ts` keeps only the dated assignment items in an announcement that match work the student already has (or that other material in the same import adds), rewritten with the existing key so a different date shows as a change. Everything else in an announcement is context, not new records.
+
+`src/core/ai.ts` builds prompts (course material wrapped by `wrapAsUntrustedData`, the list of saved assignment titles) and checks answers with `parseBriefing`: JSON only, lengths capped, and assignment titles resolved to existing keys or dropped. The service saves the result as an `ai_note` record through `saveGenerated` (no review, since it is not a fact from the material; same key replaces the note) with `extractionMethod: 'ai_model'` and `verificationStatus: 'unverified'`. The model is called through the `ai_complete` Rust command (`src-tauri/src/ai.rs`): Anthropic's Messages API with the key from the system keychain (`ai_set_key`, `ai_has_key`), or Ollama's `/api/chat` restricted to localhost. The completer is injected, so tests use a stand-in.
+
 ## Reminders
 
 Both schedulers are pure functions of stored state and today's date, so they need no background process and survive restarts. The next semester prompt first appears 14 days before the current semester ends, moves out of in-semester breaks, then repeats 14 days after each prompt until subjects are confirmed, the student skips the semester, or reminders are turned off. A new current semester starts a new cycle. Deadline reminders are computed for due dates and exams only, never availability dates, and on the due day never after the deadline time.

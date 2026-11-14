@@ -8,6 +8,21 @@ vi.mock('../src/ui/feedFetcher', async () => {
   const { fixture } = await import('./helpers');
   return { fetchFeed: async () => fixture('canvas-feed.ics') };
 });
+// The desktop app calls the model in Rust; tests use a stand-in answer.
+const aiCalls: { provider: string; prompt: string }[] = [];
+vi.mock('../src/ui/aiClient', () => ({
+  completeAi: async (r: { provider: string; prompt: string }) => {
+    aiCalls.push(r);
+    return JSON.stringify({
+      summary: 'Week 2 is about consent. Post the first discussion answer and start the writing assignment.',
+      actions: [{ task: 'Post your first answer to Discussion Question 1', due: 'Wednesday', assignment: 'Week 2: Discussion Question 1' }],
+      assignments: ['Week 2: Discussion Question 1'],
+      cautions: ['Reply to two classmates by Sunday'],
+    });
+  },
+  hasAnthropicKey: async () => false,
+  setAnthropicKey: async () => undefined,
+}));
 import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
 
 afterEach(cleanup);
@@ -183,6 +198,39 @@ describe('desktop UI', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Instructions/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Add instructions for this assignment' }));
     expect(await screen.findByLabelText('For which assignment?')).toHaveDisplayValue(/Week 2: Writing Assignment/);
+  });
+
+  it('turns on a local AI model, reads a pasted announcement and saves what to do on the assignment', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
+    await approveAll(service);
+
+    fireEvent.click(top('Semester setup'));
+    fireEvent.click(await screen.findByRole('radio', { name: /Claude \(Anthropic API\)/ }));
+    expect(screen.getByRole('button', { name: 'Save AI settings' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: /Local model \(Ollama\)/ }));
+    expect(screen.getByLabelText('Model name')).toHaveValue('llama3.1');
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI settings' }));
+    expect(await screen.findByText('llama3.1')).toBeInTheDocument();
+
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await menu('Add material'));
+    fireEvent.click(await screen.findByRole('radio', { name: /Announcement/ }));
+    fireEvent.change(screen.getByLabelText(/Paste announcement/), { target: { value: fixture('announcement-week2.txt') } });
+    fireEvent.click(screen.getByRole('button', { name: 'Extract' }));
+    expect(await screen.findByText(/AI note saved/)).toBeInTheDocument();
+    expect(aiCalls.at(-1)).toMatchObject({ provider: 'ollama' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'See what to do →' }));
+    expect(await screen.findByText(/Week 2 is about consent/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '✦ Analyze again' })).toBeInTheDocument();
+
+    fireEvent.click(await menu('Assignments'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Week 2: Discussion Question 1' }));
+    expect(await screen.findByText('Post your first answer to Discussion Question 1')).toBeInTheDocument();
+    expect(screen.getByText('Reply to two classmates by Sunday')).toBeInTheDocument();
   });
 
   it('opens an assignment workspace with its checklist', async () => {

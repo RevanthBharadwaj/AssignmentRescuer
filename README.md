@@ -54,7 +54,9 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | Content classification and extraction for free text | 🧪 Experimental, rule based |
 | Deadline reminders (7, 3, 1 and 0 days before) | 🧪 Experimental, shown while the app is open |
 | Scanned PDFs and screenshots (OCR), CSV, Excel | ⏳ Not available yet (scans are detected and reported) |
-| Notifications while closed, AI agents, research, writing, APA, originality, statistics | ⏳ Not available yet |
+| Announcements only update assignments you already have; pasting one never adds courses, semesters or module headings | ✅ Available |
+| AI assistant (optional, off by default): reads an announcement or an assignment with its course context and saves what to do, linked to that assignment. Free local model through Ollama, or Claude with your own API key and consent | 🧪 Experimental |
+| Notifications while closed, the specialised AI agents (research, writing, APA, originality, statistics) | ⏳ Not available yet |
 
 The app's own **Features** screen shows the same list, read from the registry the tests check, so it never claims more than it can do.
 
@@ -72,6 +74,8 @@ The app's own **Features** screen shows the same list, read from the registry th
 | ![Semester setup](docs/screenshots/1-setup.png) | ![Courses](docs/screenshots/6-courses.png) |
 | **Title page** — your paper format, filled from setup and the course | **Calendar** — month view coloured by course, with status and breaks |
 | ![Title page](docs/screenshots/8-title-page.png) | ![Calendar](docs/screenshots/9-calendar.png) |
+| **AI note on an announcement** — what it asks you to do | **AI plan on an assignment** — steps and rules that are easy to miss |
+| ![AI note](docs/screenshots/12-announcement-ai.png) | ![AI plan](docs/screenshots/13-assignment-ai-plan.png) |
 
 All screenshots come from the real desktop build, captured automatically by the end to end test with synthetic course data.
 
@@ -131,6 +135,7 @@ Open http://localhost:1420. The browser preview uses the same app with an in-bro
 5. **Open an assignment.** Its page has **Overview** (status, checklist, what is missing), **Instructions**, **Rubric**, **Course context** (the syllabus rules that apply, announcements that mention it, and its unit's readings, each with where it came from) and, for papers, **Title page** in your format.
 6. **Check Home and Calendar.** Home shows what is due in the next 7 days across all courses, the week after, and anything still waiting for a date. **Calendar** shows the month or week, coloured by course; click a day for its list, click an item to open it, and click a course in the legend to hide it.
 7. **Track your work.** The round button next to each item cycles **to do → in progress → submitted**; a toast lets you undo. Each course shows how much of its points you've submitted, and items carry urgency labels such as *tomorrow* or *2 days overdue*.
+7b. **Use the AI assistant (optional).** In **Semester setup → AI assistant** pick **Local model (Ollama)** (free, stays on your computer: install Ollama from ollama.com, then run `ollama pull llama3.1` once) or **Claude** (paste an API key from console.anthropic.com, which is kept in your system keychain, and tick the consent box). After that, an announcement you add is read straight away and its note appears under **Announcements** and on every assignment it mentions. On an assignment's Overview, **Make a plan with AI** reads the instructions, rubric, announcements and syllabus rules and saves a step by step plan. AI notes never change dates or items.
 8. **Keep it current.** When an instructor changes a date, paste the updated page or announcement. The app shows the old and new date side by side under **Review** and only changes it if you approve.
 9. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next.
 
@@ -200,7 +205,7 @@ PROGRESS.md            where the project stands
 
 ## Privacy and security
 
-Everything is stored in one SQLite file in your user app data folder. The app makes no AI calls. Its only network request is downloading your own calendar feed, and only when you press Sync; the feed link must be an https calendar link, downloads are capped at 5 MB and 20 seconds, and the link is never logged. Imported text is treated as data, never as instructions: hidden characters are stripped, and lines that look like attempts to instruct software (for example "ignore previous instructions") are flagged on the review screen. The desktop shell enables no HTTP, shell or file system plugins; the feed download is a single Rust command that accepts only calendar links. The `.gitignore` blocks databases and common document formats so student material can't be committed by accident; the only documents in this repository are synthetic test fixtures.
+Everything is stored in one SQLite file in your user app data folder. The app makes no AI calls unless you turn the AI assistant on, and then only when you add an announcement or press an AI button. With a local Ollama model the request goes to localhost only (other addresses are refused) and nothing leaves your computer. With Claude, the material you analyze is sent to Anthropic only after you tick the consent box, and your API key is stored in the macOS Keychain or Windows Credential Manager, never in the database. AI answers are checked before saving: they can only link to assignments you already have, and they cannot change any dates or records. The other network request is downloading your own calendar feed, and only when you press Sync; the feed link must be an https calendar link, downloads are capped at 5 MB and 20 seconds, and the link is never logged. Imported text is treated as data, never as instructions: hidden characters are stripped, and lines that look like attempts to instruct software (for example "ignore previous instructions") are flagged on the review screen. The desktop shell enables no HTTP, shell or file system plugins; the feed download is a single Rust command that accepts only calendar links. The `.gitignore` blocks databases and common document formats so student material can't be committed by accident; the only documents in this repository are synthetic test fixtures.
 
 ## Design
 

@@ -6,6 +6,32 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createServer } from 'node:http';
+
+// A stand-in for Ollama on this computer, so the AI path runs end to end
+// through the Rust command without a real model.
+const aiRequests = [];
+const fakeOllama = createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    const r = JSON.parse(body || '{}');
+    aiRequests.push(r);
+    const isPlan = /Make a short, practical plan/.test(r.messages?.[1]?.content ?? '');
+    const content = JSON.stringify(isPlan ? {
+      summary: 'A 1,000 word paper on fairness with four scholarly sources, in APA 7.',
+      actions: [{ task: 'Pick four scholarly sources from the Week 11 readings', due: null, assignment: 'Week 11: Writing Assignment' }, { task: 'Draft, then check against the Writing Standards', due: 'before the due date', assignment: 'Week 11: Writing Assignment' }],
+      assignments: ['Week 11: Writing Assignment'], cautions: ['Late work loses 10% per day'],
+    } : {
+      summary: 'The Week 11 writing assignment now needs four scholarly sources instead of three.',
+      actions: [{ task: 'Find a fourth scholarly source for the Week 11 writing assignment', due: null, assignment: 'Week 11: Writing Assignment' }],
+      assignments: ['Week 11: Writing Assignment'], cautions: ['Four sources, not three'],
+    });
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ model: r.model, message: { role: 'assistant', content }, done: true }));
+  });
+});
+await new Promise((ok) => fakeOllama.listen(11434, '127.0.0.1', ok));
 
 // Optional: SCREENSHOT_DIR=/some/dir saves PNGs of key screens.
 const SHOTS = process.env.SCREENSHOT_DIR;
@@ -133,6 +159,13 @@ try {
   await sleep(300);
   await shot(sid, '1-setup');
 
+  // Turn on the AI assistant with a local model.
+  await click(sid, "//nav[@aria-label='Main']/button[normalize-space()='Semester setup']");
+  await click(sid, "//label[contains(@class,'kind-option')][.//strong[normalize-space()='Local model (Ollama)']]");
+  await fill(sid, 'Ollama address', 'http://127.0.0.1:11434');
+  await click(sid, "//button[normalize-space()='Save AI settings']");
+  await find(sid, "//dd[normalize-space()='llama3.1']");
+
   // Inside a course: Canvas-style menu, and each kind of material added as what it is.
   const menu = (label) => click(sid, `//nav[contains(@aria-label,'course menu')]/button[starts-with(normalize-space(), '${label}')]`);
   const kind = (label) => click(sid, `//label[contains(@class,'kind-option')][.//span[normalize-space()='${label}']]`);
@@ -176,6 +209,13 @@ try {
   await fill(sid, 'Paste announcement for DSC 6400', 'Week 11 writing assignment update\nHi everyone, the Week 11 writing assignment now needs four scholarly sources instead of three.');
   await click(sid, "//button[normalize-space()='Extract' and not(@disabled)]");
   await find(sid, "//div[contains(@class,'import-result')]//*[contains(., 'Announcement (DSC 6400)')]");
+  await find(sid, "//*[contains(., 'AI note saved')]", 30000);
+  assert.equal(aiRequests.length, 1);
+  assert.match(aiRequests[0].messages[1].content, /four scholarly sources/);
+  await click(sid, "//button[normalize-space()='See what to do →']");
+  await find(sid, "//li//label[contains(., 'Find a fourth scholarly source')]");
+  await wd('POST', `/session/${sid}/execute/sync`, { script: "document.querySelector('.ai-note').scrollIntoView({ block: 'center' })", args: [] });
+  await shot(sid, '12-announcement-ai');
 
   await menu('Home');
   await find(sid, "//h2[normalize-space()='Coming up']");
@@ -244,6 +284,12 @@ try {
   await click(sid, "//button[normalize-space()='Week 11: Writing Assignment']");
   await find(sid, "//h2[normalize-space()='Requirements checklist']");
   await find(sid, "//*[contains(., 'announcement mentions this assignment')]");
+  await find(sid, "//*[contains(., 'Find a fourth scholarly source')]");
+  await click(sid, "//button[normalize-space()='✦ Make a plan with AI']");
+  await find(sid, "//li//label[contains(., 'Pick four scholarly sources')]", 30000);
+  await wd('POST', `/session/${sid}/execute/sync`, { script: "document.querySelector('.ai-card').scrollIntoView({ block: 'start' }); window.scrollBy(0, -70);", args: [] });
+  await shot(sid, '13-assignment-ai-plan');
+  await wd('POST', `/session/${sid}/execute/sync`, { script: 'window.scrollTo(0, 0)', args: [] });
   await shot(sid, '7-assignment-workspace');
   await click(sid, "//button[@role='tab'][starts-with(normalize-space(), 'Course context')]");
   await find(sid, "//strong[normalize-space()='Writing Standards']");
@@ -267,3 +313,5 @@ try {
 } finally {
   await wd('DELETE', `/session/${sid}`);
 }
+
+fakeOllama.close();

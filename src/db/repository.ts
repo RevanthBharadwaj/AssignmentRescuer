@@ -242,6 +242,23 @@ export class Repository {
     return updated;
   }
 
+  /**
+   * Save something the app generated (an AI note). It is not a fact from the
+   * student's material, so it skips review; re-saving the same key replaces it.
+   */
+  async saveGenerated(r: Omit<ConfirmedRecord, 'id' | 'confirmedAt' | 'updatedAt'>, now = new Date().toISOString()): Promise<ConfirmedRecord> {
+    const existing = await this.findRecordByKey(r.entityType, r.key);
+    const rec: ConfirmedRecord = { ...r, id: existing?.id ?? `rec_${globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`, confirmedAt: existing?.confirmedAt ?? now, updatedAt: now };
+    await this.db.transaction(async () => {
+      await this.upsertRecord(rec, existing === null);
+      if (existing) await this.db.execute('DELETE FROM evidence WHERE record_id = ?', [rec.id]);
+      for (const ev of rec.evidence) {
+        await this.db.execute('INSERT INTO evidence (record_id, source_id, provenance_json) VALUES (?,?,?)', [rec.id, ev.sourceId, JSON.stringify(ev)]);
+      }
+    });
+    return rec;
+  }
+
   async deleteRecord(id: string): Promise<void> {
     await this.db.execute('DELETE FROM records WHERE id = ?', [id]);
   }

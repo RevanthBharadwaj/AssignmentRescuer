@@ -16,6 +16,8 @@ import { classify } from './classify/classifier';
 import { extractEntities, rubricKey, termCodeToSemester, type ExtractionContext } from './extract/entities';
 import { looksLikeModuleList, parseModuleList } from './extract/canvas';
 import { icsToRecords } from './extract/ics';
+import { focusAnnouncement } from './announcements';
+import { sourceKind } from './courseContent';
 import { approximateTermWindow } from './extract/dates';
 import { proposeChanges } from './merge/merge';
 import { fnv1a, newId, normaliseCourseCode, normaliseKey, sha256Hex } from './util';
@@ -76,6 +78,7 @@ const MANUAL_KEYS: Record<EntityType, (f: Record<string, FieldValue>) => string>
   rubric_criterion: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|${normaliseKey(String(f.criterion ?? ''))}`,
   timeline_event: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|${String(f.kind ?? 'due')}|${normaliseKey(String(f.title ?? ''))}`,
   research_source: (f) => String(f.doi ?? f.title ?? '').toLowerCase(),
+  ai_note: (f) => String(f.key ?? f.title ?? ''),
   course_material: (f) => `${f.courseCode ? normaliseCourseCode(String(f.courseCode)) : '-'}|material|${normaliseKey(`${f.unit ?? ''} ${f.title ?? ''}`)}`,
 };
 
@@ -238,6 +241,20 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
     allRecords.push(...records);
     result.sources.push({ source: p.source, classifications: p.classifications, records });
   }
+
+  // Announcements only update work the student already has.
+  // Work found in the other material of this same import counts as existing too.
+  const isAnn = (s: (typeof result.sources)[number]) => s.source.sourceType !== 'manual_entry' && sourceKind({ ...s.source, classifications: s.classifications }) === 'announcement';
+  const known: ConfirmedRecord[] = [
+    ...deps.confirmedRecords,
+    ...result.sources.filter((s) => !isAnn(s)).flatMap((s) => s.records).map((r) => ({
+      id: `pending_${r.key}`, entityType: r.entityType, key: r.key, fields: r.fields, unknownFields: [], evidence: [], confirmedAt: '', updatedAt: '',
+    }) as ConfirmedRecord),
+  ];
+  for (const s of result.sources) {
+    if (isAnn(s)) s.records = focusAnnouncement(s.records, known);
+  }
+  allRecords.splice(0, allRecords.length, ...result.sources.flatMap((s) => s.records));
 
   // Remember which course the student added each item to, so the item is
   // reviewed there even when its text names a different course.

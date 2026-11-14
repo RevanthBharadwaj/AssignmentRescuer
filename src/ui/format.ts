@@ -44,7 +44,7 @@ export const FIELD_LABELS: Record<string, string> = {
 export const ENTITY_LABELS: Record<string, string> = {
   university: 'University', semester: 'Semester', academic_break: 'Academic break', course: 'Course',
   assignment: 'Assignment', rubric_criterion: 'Rubric criterion', timeline_event: 'Timeline item', research_source: 'Research source',
-  course_material: 'Course material',
+  course_material: 'Course material', ai_note: 'AI note',
 };
 
 export const FLAG_LABELS: Record<string, string> = {

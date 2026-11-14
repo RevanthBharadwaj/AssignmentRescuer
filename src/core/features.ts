@@ -53,7 +53,8 @@ export const FEATURES: Feature[] = [
   { id: 'timeline.merge', name: 'Unified academic timeline', status: 'unavailable', milestone: 8, note: 'Record level merging works now; the timeline view is planned.' },
   { id: 'calendar.views', name: 'Calendar (month and week)', status: 'implemented', milestone: 9, note: 'Every deadline coloured by course, breaks and semester days marked, filter by course, day panel.' },
   { id: 'app.status', name: 'Status and progress', status: 'implemented', milestone: 9, note: 'Mark work to do, in progress or submitted (with undo); course progress by points; urgency labels; checklist progress.' },
-  { id: 'agents.ai', name: 'AI agents (research, writing, APA, originality, statistics)', status: 'unavailable', milestone: 11, note: 'No AI calls are made in this build.' },
+  { id: 'ai.briefing', name: 'AI briefings for announcements and assignment plans', status: 'experimental', milestone: 11, note: 'Off until you turn it on. A local Ollama model keeps everything on this computer; Claude needs your API key and consent. Notes are saved per assignment and never change dates.' },
+  { id: 'agents.ai', name: 'AI agents (research, writing, APA, originality, statistics)', status: 'unavailable', milestone: 11, note: 'Not built yet. Only the briefing assistant above makes AI calls, and only when you press an AI button.' },
   { id: 'input.audio_video', name: 'Lecture audio and video', status: 'unavailable', milestone: 99, note: 'Future extension.' },
   { id: 'input.lms', name: 'LMS, email and cloud integrations', status: 'unavailable', milestone: 99, note: 'Future extension.' },
 ];
