@@ -20,7 +20,7 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | 3 | Images and screenshots | ⏳ Not started | PNG, JPEG, WebP, HEIC; OCR and an optional vision model with consent |
 | 4 | CSV and XLSX | ⏳ Not started | Also JSON and ICS calendar files |
 | 5 | Content classification | 🟡 Partly | Rule based classifier works; needs an evaluation set and accuracy targets |
-| 6 | Entity extraction | 🟡 Partly | Deterministic extractor works; needs an evaluation set and an AI fallback |
+| 6 | Entity extraction | 🟡 Partly | Deterministic extractor and assignment context work; needs an evaluation set and an AI fallback |
 | 7 | Student confirmation workflow | ✅ Done | Delivered with milestone 1 |
 | 8 | Timeline merging | 🟡 Partly | Record level merging done; unified timeline view not started |
 | 9 | Calendar integration | 🟡 Mostly done | Month and week views, course colours, filters; a dedicated daily agenda remains |
@@ -29,6 +29,16 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | 12 | Cross platform packaging | 🟡 Partly | CI builds .dmg and .msi; code signing not set up |
 
 ## Done so far
+
+**Canvas-style courses, material sorted by kind, assignment context (latest)**
+
+1. Feedback: everything in a course sat in one box, so syllabus, announcements and assignments could not be told apart, and assignments did not draw on the rest of the course.
+2. Every piece of material now has a kind: syllabus, announcement, modules page, assignment instructions, rubric, course policies and rules, or reading. The student picks it when adding (or chooses "Not sure" and the app infers it) and can change it under Files and sources.
+3. Courses look and work like Canvas: breadcrumbs on every page (Home › Courses › BUS 610 › Assignments › Paper 1) and a course menu with Home, Announcements, Syllabus, Modules, Assignments, Policies and rules, Files and sources, and Add material.
+4. The syllabus is split into its sections, and policy sections (late work, academic integrity, AI use, formatting, grading, participation, communication, accessibility, attendance, submission) are tagged and collected on the Policies page.
+5. Each assignment page has Overview, Instructions, Rubric, Course context and Title page. Course context gathers the syllabus rules that apply to that kind of work (formatting and integrity first for papers, participation first for discussions), announcements that mention the assignment, and the readings and notes for its unit, each with its source and line.
+6. Instructions or a rubric added for a chosen assignment are attached to that assignment instead of creating a new one.
+7. 120 Vitest tests; the desktop end to end test adds a modules page, a syllabus, an announcement and a PDF as different kinds and checks the assignment's course context.
 
 **PDF and Word import, calendar, status and a livelier interface (latest)**
 
@@ -81,7 +91,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | runs in CI | runs in CI |
-| 112 Vitest tests | ✅ | runs in CI | runs in CI |
+| 120 Vitest tests | ✅ | runs in CI | runs in CI |
 | 3 Rust tests | ✅ | runs in CI | runs in CI |
 | Production frontend build | ✅ | runs in CI | runs in CI |
 | Desktop app compiles and launches | ✅ | runs in CI | runs in CI |

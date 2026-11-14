@@ -54,6 +54,10 @@ The desktop driver calls two Rust commands, `db_batch` and `db_select` (`src-tau
 
 Records match on exact key first (for example `CIS 6930|homework 1`). Assignments and timeline items also match fuzzily: same course and title token similarity of at least 0.75, or at least 0.5 with the same date. A date with no year matches the same month and day with any year, so a screenshot that omits the year does not raise a false conflict. Unknown values never erase known ones.
 
+## Course content
+
+`src/core/courseContent.ts` decides what each source is (`sourceKind`: the student's choice, else inferred from the text), which sources belong to a course, how a document splits into sections, which sections state rules (`policySections`, tagged by topic), and what context an assignment gets (`buildAssignmentContext`). Context is ranked by the topics that matter for the kind of work, with topics named in a section heading counting more than ones mentioned in passing. Announcements are linked to an assignment by its title, or by the same numbers in the same order together with the same kind of work in one sentence.
+
 ## Reminders
 
 Both schedulers are pure functions of stored state and today's date, so they need no background process and survive restarts. The next semester prompt first appears 14 days before the current semester ends, moves out of in-semester breaks, then repeats 14 days after each prompt until subjects are confirmed, the student skips the semester, or reminders are turned off. A new current semester starts a new cycle. Deadline reminders are computed for due dates and exams only, never availability dates, and on the due day never after the deadline time.

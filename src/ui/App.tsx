@@ -10,6 +10,7 @@ import { Setup } from './components/Setup';
 import { useAsync } from './useAsync';
 import { Calendar } from './components/Calendar';
 import { Toasts, type Toast } from './ux';
+import { Breadcrumbs, type Crumb } from './components/Breadcrumbs';
 
 /** The four main areas live in the bottom dock. */
 const DOCK: { route: Route['name']; label: string; verb: string }[] = [
@@ -23,6 +24,17 @@ const DOCK: { route: Route['name']; label: string; verb: string }[] = [
 const AREA: Record<Route['name'], Route['name']> = {
   home: 'home', setup: 'home', add: 'home', courses: 'courses', course: 'courses', assignment: 'courses',
   review: 'review', sources: 'sources', features: 'features', calendar: 'calendar',
+};
+
+/** Breadcrumbs for pages outside a course (course pages draw their own). */
+const TOP_CRUMBS: Partial<Record<Route['name'], Crumb[]>> = {
+  setup: [{ label: 'Semester setup' }],
+  add: [{ label: 'Import a syllabus' }],
+  courses: [{ label: 'Courses' }],
+  calendar: [{ label: 'Calendar' }],
+  review: [{ label: 'Review' }],
+  sources: [{ label: 'Imported material' }],
+  features: [{ label: 'Features' }],
 };
 
 function useClock(): string {
@@ -75,13 +87,14 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           <span className="clock" aria-label="Local time">{clock}</span>
         </header>
 
-        <main key={`${route.name}-${'code' in route ? route.code : ''}-${'id' in route ? route.id : ''}`} className="route">
+        <main key={`${route.name}-${'code' in route ? route.code : ''}-${'id' in route ? route.id : ''}-${'tab' in route ? route.tab : ''}-${'section' in route ? route.section : ''}`} className="route">
+          {TOP_CRUMBS[route.name] && route.name !== 'home' && <Breadcrumbs trail={[{ label: 'Home', route: { name: 'home' } }, ...(TOP_CRUMBS[route.name] as Crumb[])]} />}
           {route.name === 'home' && <Home />}
           {route.name === 'setup' && <Setup />}
           {route.name === 'add' && <AddInfo onImported={() => go({ name: 'review' })} />}
           {route.name === 'courses' && <CourseList />}
-          {route.name === 'course' && <CoursePage code={route.code} tab={route.tab} />}
-          {route.name === 'assignment' && <AssignmentWorkspace id={route.id} />}
+          {route.name === 'course' && <CoursePage code={route.code} tab={route.tab} addKind={route.addKind} forAssignment={route.forAssignment} />}
+          {route.name === 'assignment' && <AssignmentWorkspace id={route.id} section={route.section} />}
           {route.name === 'review' && <Review />}
           {route.name === 'sources' && <Sources />}
           {route.name === 'features' && <Features />}

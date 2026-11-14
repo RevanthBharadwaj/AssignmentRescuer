@@ -5,15 +5,17 @@ export type Route =
   | { name: 'home' }
   | { name: 'setup' }
   | { name: 'courses' }
-  | { name: 'course'; code: string; tab?: CourseTab }
-  | { name: 'assignment'; id: string }
+  | { name: 'course'; code: string; tab?: CourseTab; addKind?: string; forAssignment?: string }
+  | { name: 'assignment'; id: string; section?: AssignmentSection }
   | { name: 'review' }
   | { name: 'sources' }
   | { name: 'features' }
   | { name: 'add' }
   | { name: 'calendar'; month?: string };
 
-export type CourseTab = 'timeline' | 'assignments' | 'materials' | 'add';
+export type AssignmentSection = 'overview' | 'instructions' | 'rubric' | 'context' | 'title';
+
+export type CourseTab = 'home' | 'announcements' | 'syllabus' | 'modules' | 'assignments' | 'policies' | 'files' | 'add';
 
 export interface AppContextValue {
   go: (route: Route) => void;

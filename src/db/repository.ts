@@ -35,8 +35,15 @@ export class Repository {
   }
 
   async saveImport(result: ImportResult): Promise<void> {
+    const reread = new Set(result.duplicateInputs.filter((d) => d.reprocessed).map((d) => d.existingSourceId));
     await this.db.transaction(async () => {
-      for (const { source, classifications } of result.sources) await this.insertSource(source, classifications);
+      for (const { source, classifications } of result.sources) {
+        await this.insertSource(source, classifications);
+        // Re-read content: keep the original row but record the latest course and kind.
+        if (reread.has(source.id)) {
+          await this.db.execute('UPDATE sources SET hints_json = ?, classifications_json = ? WHERE id = ?', [JSON.stringify(source.hints), JSON.stringify(classifications), source.id]);
+        }
+      }
       for (const p of result.proposals) await this.insertProposal(p);
     });
   }
@@ -67,6 +74,15 @@ export class Repository {
       classifications: JSON.parse(String(r.classifications_json)),
       pageOffsets: r.page_offsets_json ? JSON.parse(String(r.page_offsets_json)) : null,
     }));
+  }
+
+  /** Change what the student says a source is (kind, course, linked assignment). */
+  async updateSourceHints(sourceId: string, patch: Record<string, string | undefined>): Promise<void> {
+    const [row] = await this.db.select<{ hints_json: string }>('SELECT hints_json FROM sources WHERE id = ?', [sourceId]);
+    if (!row) throw new Error(`Source ${sourceId} not found`);
+    const hints = { ...JSON.parse(row.hints_json), ...patch };
+    for (const k of Object.keys(hints)) if (hints[k] === undefined || hints[k] === '') delete hints[k];
+    await this.db.execute('UPDATE sources SET hints_json = ? WHERE id = ?', [JSON.stringify(hints), sourceId]);
   }
 
   /**

@@ -12,6 +12,7 @@ async function setup(today = '2026-09-02') {
 }
 
 const dock = (name: string | RegExp) => within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name });
+const menu = async (name: string) => within(await screen.findByRole('navigation', { name: /course menu/ })).findByRole('button', { name: new RegExp(`^${name}`) });
 const top = (name: string) => within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name });
 
 async function typedSemester(service: Awaited<ReturnType<typeof setup>>) {
@@ -104,36 +105,77 @@ describe('desktop UI', () => {
     expect(bus?.fields).toMatchObject({ instructor: 'Dr. Jane Doe', section: '7AB12', name: 'Strategic Management' });
   });
 
-  it('imports a pasted Canvas modules page into a course and fills its tabs', async () => {
+  it('imports a pasted Canvas modules page into a course and fills its sections', async () => {
     const service = await setup('2026-09-02');
     await typedSemester(service);
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Add material' }));
-    fireEvent.change(screen.getByLabelText(/Paste anything for DSC 6400/), { target: { value: fixture('canvas-modules.txt') } });
+    // Canvas-style breadcrumbs and course menu.
+    const crumbs = await screen.findByRole('navigation', { name: 'Breadcrumb' }, { timeout: 3000 });
+    await within(crumbs).findByText('DSC 6400');
+    expect(within(crumbs).getAllByRole('listitem').map((li) => li.textContent?.replace('›', '').trim())).toEqual(['Home', 'Courses', 'DSC 6400']);
+    fireEvent.click(await menu('Add material'));
+    fireEvent.click(await screen.findByLabelText(/Modules page/));
+    fireEvent.change(screen.getByLabelText(/Paste modules page for DSC 6400/), { target: { value: fixture('canvas-modules.txt') } });
     fireEvent.click(screen.getByRole('button', { name: 'Extract' }));
 
     expect(await screen.findByRole('heading', { name: /Graded work and deadlines/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Readings, lectures and files/ })).toBeInTheDocument();
-    // The project mentioned only in a reminder gets a date typed inline.
     fireEvent.change(screen.getByLabelText('Due date for Project 1: Ethics Case Brief'), { target: { value: '2026-09-20' } });
     fireEvent.click(screen.getByRole('button', { name: /^Approve \d+ selected$/ }));
     expect(await screen.findByText('Nothing waiting for DSC 6400.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }));
-    expect(await screen.findByRole('button', { name: 'Week 2: Writing Assignment' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Project 1: Ethics Case Brief' })).toBeInTheDocument();
+    fireEvent.click(await menu('Modules'));
+    expect(await screen.findByRole('heading', { name: 'Week 1' })).toBeInTheDocument();
+    expect(screen.getByText('Foundations of Data Ethics.pdf')).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Modules')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Assignments' }));
-    expect(await screen.findByText('645 points listed in your material.')).toBeInTheDocument();
+    fireEvent.click(await menu('Assignments'));
+    expect(await screen.findByText(/645 points listed in your material/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Discussions/ }));
+    expect(screen.queryByRole('button', { name: 'Final Exam' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Readings and materials' }));
-    expect(await screen.findByText('Foundations of Data Ethics.pdf')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Week 1' })).toBeInTheDocument();
+    fireEvent.click(await menu('Files and sources'));
+    expect(await screen.findByRole('combobox', { name: /What is Modules page \(DSC 6400\)/ })).toHaveValue('modules');
 
     fireEvent.click(dock('Home'));
     expect(await screen.findByRole('heading', { name: 'Due in the next 7 days' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Week 1: Discussion Question 1' })).toBeInTheDocument();
+  });
+
+  it('keeps syllabus, announcements and policies apart and links them to assignments', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('syllabus-policies.txt'), hints: { material: 'syllabus' } }]);
+    await service.importForCourse('DSC 6400', [{ kind: 'text', text: 'Week 2 writing assignment update\nThe Week 2 writing assignment now needs four scholarly sources.', hints: { material: 'announcement' } }]);
+    await approveAll(service);
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Announcements/ }));
+    expect(await screen.findByRole('article', { name: 'Announcement: Week 2 writing assignment update' })).toBeInTheDocument();
+    fireEvent.click(await menu('Syllabus'));
+    expect(await screen.findByText('Late Work Policy')).toBeInTheDocument();
+    fireEvent.click(await menu('Policies and rules'));
+    expect(await screen.findByRole('article', { name: 'Policy: Use of Artificial Intelligence' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'AI use' }));
+    expect(screen.queryByRole('article', { name: 'Policy: Grading Scale' })).not.toBeInTheDocument();
+
+    fireEvent.click(await menu('Assignments'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Week 2: Writing Assignment' }));
+    await screen.findByRole('heading', { name: 'Week 2: Writing Assignment' });
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getAllByRole('listitem').map((li) => li.textContent?.replace('›', '').trim())).toEqual(['Home', 'Courses', 'DSC 6400', 'Assignments', 'Week 2: Writing Assignment']);
+    expect(await screen.findByText(/1 announcement mentions this assignment/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Course context/ }));
+    expect(await screen.findByText('Writing Standards')).toBeInTheDocument();
+    expect(screen.getByText('Week 2 writing assignment update')).toBeInTheDocument();
+    expect(screen.getByText('Week 2: Lecture')).toBeInTheDocument();
+
+    // Add instructions for this exact assignment from its page.
+    fireEvent.click(screen.getByRole('tab', { name: /Instructions/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add instructions for this assignment' }));
+    expect(await screen.findByLabelText('For which assignment?')).toHaveDisplayValue(/Week 2: Writing Assignment/);
   });
 
   it('opens an assignment workspace with its checklist', async () => {
@@ -143,6 +185,7 @@ describe('desktop UI', () => {
     await approveAll(service);
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await menu('Assignments'));
     fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper' }));
     expect(await screen.findByRole('heading', { name: 'Requirements checklist' })).toBeInTheDocument();
     expect(screen.getByText(/Submit by Dec 14, 2026/)).toBeInTheDocument();
@@ -158,7 +201,9 @@ describe('desktop UI', () => {
     await approveAll(service);
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
+    fireEvent.click(await menu('Assignments'));
     fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Title page' }));
     const page = await screen.findByLabelText('Title page preview');
     expect(within(page).getByText('[Paper title]')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Paper title'), { target: { value: 'Consent in Data Collection' } });
@@ -204,7 +249,7 @@ describe('desktop UI', () => {
     await approveAll(service);
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Assignments' }));
+    fireEvent.click(await menu('Assignments'));
     const status = await screen.findByRole('button', { name: 'Week 15: Final Research Paper: To do. Change status' });
     fireEvent.click(status);
     fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper: In progress. Change status' }));
@@ -220,9 +265,9 @@ describe('desktop UI', () => {
     await typedSemester(service);
     fireEvent.click(dock('Courses'));
     fireEvent.click(await screen.findByRole('button', { name: 'Open DSC 6400' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Add material' }));
+    fireEvent.click(await menu('Add material'));
     const file = new File([fixtureBytes('syllabus.pdf')], 'syllabus.pdf', { type: 'application/pdf' });
-    fireEvent.change(screen.getByLabelText('Choose files for this course'), { target: { files: [file] } });
+    fireEvent.change(await screen.findByLabelText('Choose files for this course'), { target: { files: [file] } });
     expect(await screen.findByText(/Found \d+ items for DSC 6400/, {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Select Homework 1' })).toBeChecked();
   });

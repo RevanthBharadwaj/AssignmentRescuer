@@ -519,7 +519,25 @@ export function extractEntities(
   }
 
   // ---------- Pass 4: whole document assignment details ----------
-  const isInstructions = hasLabel(classifications, 'assignment_instructions') || hasLabel(classifications, 'project_requirements') || hasLabel(classifications, 'discussion_question');
+  const forKey = source.hints.assignmentKey ?? null;
+  if (forKey) {
+    // The student said which assignment this is for: everything here is
+    // about that assignment, so drop separately titled guesses.
+    for (const a of assignments) records.splice(records.indexOf(a), 1);
+    const hinted = assignments.find((a) => a.fields.dueDate) ?? null;
+    push('assignment', forKey, {
+      title: source.hints.assignmentTitle ?? forKey.split('|').pop() ?? 'Assignment',
+      type: assignmentTypeOf(text) ?? 'assignment',
+      courseCode: forKey.split('|')[0] === '-' ? null : forKey.split('|')[0],
+      unit: null,
+      dueDate: hinted?.fields.dueDate ?? findDates(lines.filter((l) => DUE_RE.test(l.text)).map((l) => l.text).join('\n'), dateCtx)[0]?.date ?? null,
+      availableDate: null,
+      pointsPossible: null,
+    }, lines.find((l) => l.text.trim()) ?? null);
+    assignments.splice(0, assignments.length, records[records.length - 1]);
+    for (const r of records) if (r.entityType === 'rubric_criterion') { r.fields.assignmentKey = forKey; r.fields.courseCode = forKey.split('|')[0]; }
+  }
+  const isInstructions = !!forKey || hasLabel(classifications, 'assignment_instructions') || hasLabel(classifications, 'project_requirements') || hasLabel(classifications, 'discussion_question');
   if (isInstructions && assignments.length <= 1 && lines.length <= 120) {
     const details = documentAssignmentDetails(text, lines);
     let target = assignments[0];

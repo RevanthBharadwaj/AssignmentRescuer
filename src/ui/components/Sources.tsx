@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import { FEATURES, type FeatureStatus } from '../../core/features';
+import { MATERIAL_LABELS, sourceKind } from '../../core/courseContent';
 
 export function Sources() {
   const { service, version, refresh } = useApp();
@@ -19,8 +20,9 @@ export function Sources() {
       {sources.length === 0 && <p className="muted">Nothing imported yet.</p>}
       {sources.map((s) => (
         <div key={s.id} className="card compact">
+          <span className={`kind-badge k-${sourceKind(s)}`}>{MATERIAL_LABELS[sourceKind(s)]}</span>{' '}
           <strong>{s.originalName}</strong>
-          <span className="muted small"> · {s.format} · {new Date(s.importedAt).toLocaleString()} · {s.classifications.map((c) => c.label.replace(/_/g, ' ')).slice(0, 3).join(', ')}</span>
+          <span className="muted small"> · {s.hints.course ? `${s.hints.course} · ` : 'no course · '}{s.format} · {new Date(s.importedAt).toLocaleString()}</span>
           {s.securityFlags.some((f) => f.kind === 'prompt_injection_pattern') && <span className="tag kind-conflict">Suspicious text</span>}
           <details><summary>View text</summary><pre className="instructions">{s.text}</pre></details>
           {confirming === s.id ? (

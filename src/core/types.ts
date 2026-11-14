@@ -61,6 +61,11 @@ export interface ImportHints {
   course?: string;
   contentType?: ContentLabel;
   academicYear?: string;
+  /** What the student said this material is (syllabus, announcement, ...). */
+  material?: string;
+  /** Instructions or a rubric for this existing assignment. */
+  assignmentKey?: string;
+  assignmentTitle?: string;
 }
 
 export interface TextLocation {

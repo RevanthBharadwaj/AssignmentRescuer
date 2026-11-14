@@ -133,33 +133,64 @@ try {
   await sleep(300);
   await shot(sid, '1-setup');
 
-  // Paste the Canvas page into the course.
+  // Inside a course: Canvas-style menu, and each kind of material added as what it is.
+  const menu = (label) => click(sid, `//nav[contains(@aria-label,'course menu')]/button[starts-with(normalize-space(), '${label}')]`);
+  const kind = (label) => click(sid, `//label[contains(@class,'kind-option')][.//span[normalize-space()='${label}']]`);
+  const approveAll = async () => {
+    await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
+    // Anything that changes a saved value (for example semester dates) keeps the saved value here.
+    for (let i = 0; i < 5; i++) {
+      const n = await wd('POST', `/session/${sid}/execute/sync`, { script: "return document.querySelectorAll('article.proposal').length", args: [] });
+      if (!n) break;
+      await click(sid, "(//article[contains(@class,'proposal')]//button[normalize-space()='Reject'])[1]");
+      await sleep(300);
+    }
+    await find(sid, "//*[normalize-space()='Nothing waiting for DSC 6400.']", 15000);
+  };
+
   await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Courses')]");
   await click(sid, "//button[@aria-label='Open DSC 6400']");
-  await click(sid, "//button[@role='tab'][normalize-space()='Add material']");
-  await fill(sid, 'Paste anything for DSC 6400', PASTE);
+  await menu('Add material');
+  await kind('Modules page');
+  await fill(sid, 'Paste modules page for DSC 6400', PASTE);
   await click(sid, "//button[normalize-space()='Extract']");
   await find(sid, "//h3[contains(., 'Graded work and deadlines')]");
   await wd('POST', `/session/${sid}/execute/sync`, { script: "[...document.querySelectorAll('h2')].find((h) => h.textContent.includes('Waiting for your review')).scrollIntoView({ block: 'start' }); window.scrollBy(0, -70);", args: [] });
-  await sleep(400);
   await shot(sid, '2-review');
-  await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
-  await find(sid, "//*[normalize-space()='Nothing waiting for DSC 6400.']", 15000);
-  await click(sid, "//button[@role='tab'][normalize-space()='Timeline']");
-  await find(sid, "//button[normalize-space()='Week 11: Writing Assignment']");
-  await shot(sid, '3-course-timeline');
-  await click(sid, "//button[@role='tab'][normalize-space()='Readings and materials']");
-  await find(sid, "//*[normalize-space()='Algorithmic Fairness in Practice.pdf']");
-  await shot(sid, '4-course-materials');
+  await approveAll();
 
-  // Mark an item submitted from the timeline.
-  await click(sid, "//button[@role='tab'][normalize-space()='Timeline']");
+  // The syllabus, with its policies.
+  await kind('Syllabus');
+  await fill(sid, 'Paste syllabus for DSC 6400', readFileSync(new URL('../tests/fixtures/syllabus-policies.txt', import.meta.url), 'utf8'));
+  await click(sid, "//button[normalize-space()='Extract']");
+  await find(sid, "//div[contains(@class,'import-result')]");
+  if (await wd('POST', `/session/${sid}/execute/sync`, { script: "return document.querySelectorAll('.review-table input:checked').length", args: [] })) await approveAll();
+
+  // An announcement that mentions an assignment.
+  await kind('Announcement');
+  await fill(sid, 'Paste announcement for DSC 6400', 'Week 11 writing assignment update\nHi everyone, the Week 11 writing assignment now needs four scholarly sources instead of three.');
+  await click(sid, "//button[normalize-space()='Extract']");
+  await find(sid, "//div[contains(@class,'import-result')]");
+
+  await menu('Home');
+  await find(sid, "//h2[normalize-space()='Coming up']");
+  await shot(sid, '3-course-home');
+  await menu('Modules');
+  await find(sid, "//*[normalize-space()='Algorithmic Fairness in Practice.pdf']");
+  await shot(sid, '4-course-modules');
+  await menu('Syllabus');
+  await find(sid, "//span[normalize-space()='Late Work Policy']");
+  await shot(sid, '10-syllabus');
+
+  // Mark an item submitted from the course home.
+  await menu('Home');
   await click(sid, "//button[@aria-label='Week 11: Discussion Question 1: To do. Change status']");
   await click(sid, "//button[@aria-label='Week 11: Discussion Question 1: In progress. Change status']");
   await find(sid, "//*[contains(., 'as submitted')]");
 
-  // Drop a PDF syllabus into the course it belongs to (PDF.js runs in the app's worker).
-  await click(sid, "//button[@role='tab'][normalize-space()='Add material']");
+  // Drop a PDF syllabus (PDF.js runs in the app's worker).
+  await menu('Add material');
+  await kind('Syllabus');
   const pdf = readFileSync(new URL('../tests/fixtures/syllabus.pdf', import.meta.url)).toString('base64');
   await wd('POST', `/session/${sid}/execute/sync`, {
     script: `const bytes = Uint8Array.from(atob(arguments[0]), (c) => c.charCodeAt(0));
@@ -171,14 +202,10 @@ try {
     args: [pdf],
   });
   await find(sid, "//strong[starts-with(normalize-space(), 'Found ') and contains(., 'for DSC 6400')]", 20000);
-  await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
-  // The PDF's semester dates differ from the ones typed in setup: keep the typed ones.
-  await click(sid, "//article[contains(., 'Changed since you last confirmed it')]//button[normalize-space()='Reject']");
-  await find(sid, "//*[normalize-space()='Nothing waiting for DSC 6400.']", 15000);
+  await approveAll();
 
   await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Calendar')]");
   await find(sid, "//div[@role='grid']");
-  await sleep(700);
   await shot(sid, '9-calendar');
   console.log('PASS setup, course import and approval through the desktop SQLite commands');
 } catch (e) {
@@ -198,19 +225,31 @@ try {
   await find(sid, "//button[@aria-label='Open DSC 6400']");
   await shot(sid, '6-courses');
   await click(sid, "//button[@aria-label='Open DSC 6400']");
-  await click(sid, "//button[@role='tab'][normalize-space()='Assignments']");
-  await click(sid, "//button[normalize-space()='Week 15: Final Research Paper']");
+  const menu2 = (label) => click(sid, `//nav[contains(@aria-label,'course menu')]/button[starts-with(normalize-space(), '${label}')]`);
+  await menu2('Assignments');
+  await click(sid, "//button[normalize-space()='Week 11: Writing Assignment']");
   await find(sid, "//h2[normalize-space()='Requirements checklist']");
+  await find(sid, "//*[contains(., 'announcement mentions this assignment')]");
   await shot(sid, '7-assignment-workspace');
+  await click(sid, "//button[@role='tab'][starts-with(normalize-space(), 'Course context')]");
+  await find(sid, "//strong[normalize-space()='Writing Standards']");
+  await shot(sid, '11-assignment-context');
+
+  await menu2('Assignments');
+  await click(sid, "//button[normalize-space()='Week 15: Final Research Paper']");
+  await click(sid, "//button[@role='tab'][normalize-space()='Title page']");
+  await find(sid, "//div[@aria-label='Title page preview']");
   await fill(sid, 'Paper title', 'Consent and Fairness in Data Collection');
   await click(sid, "//button[normalize-space()='Save title']");
   await find(sid, "//p[normalize-space()='Consent and Fairness in Data Collection']");
   await wd('POST', `/session/${sid}/execute/sync`, { script: "document.querySelector('.paper').scrollIntoView({ block: 'center' })", args: [] });
-  await sleep(300);
   await shot(sid, '8-title-page');
   const body = await text(sid);
   assert.match(body, /Final Research Paper/);
   console.log('PASS data persisted after restart');
+} catch (e) {
+  console.error('PAGE TEXT:\n' + (await text(sid)));
+  throw e;
 } finally {
   await wd('DELETE', `/session/${sid}`);
 }

@@ -33,7 +33,10 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 |---|---|
 | Semester setup with real fields: your name, school, program, term, first and last day, courses; saved sections become read only with a Modify button | ✅ Available |
 | Canvas course list (Courses → All Courses) pasted into setup: codes, names, sections and term | ✅ Available |
-| Course pages with Timeline, Assignments, Readings and materials, and Add material tabs | ✅ Available |
+| Course pages laid out like Canvas: breadcrumbs, and a course menu with Home, Announcements, Syllabus, Modules, Assignments, Policies and rules, Files and sources, Add material | ✅ Available |
+| Each piece of material labelled by kind (syllabus, announcement, modules page, assignment instructions, rubric, course policies, reading), chosen when adding or inferred, and changeable later | ✅ Available |
+| Assignment pages with Overview, Instructions, Rubric, Course context and Title page; the context gathers the syllabus rules that apply, announcements that mention the assignment and the unit's readings, each with its source | ✅ Available |
+| Instructions or a rubric added for a specific assignment are attached to it | ✅ Available |
 | Canvas Modules page pasted as text: items, due dates, points, units, readings, lectures, files, reminders | ✅ Available |
 | PDF and Word (.docx) files: syllabi, schedules, assignment instructions, rubric tables; each item keeps its page | ✅ Available |
 | Syllabus, assignment instructions, rubric, announcement pasted as text; TXT and Markdown files | ✅ Available |
@@ -58,12 +61,14 @@ The app's own **Features** screen shows the same list, read from the registry th
 
 | | |
 |---|---|
-| **Semester setup** — school, dates and courses, saved as you type them | **Review inside the course** — a pasted Canvas page becomes one checklist; items without a date get a date box |
-| ![Semester setup](docs/screenshots/1-setup.png) | ![Review](docs/screenshots/2-review.png) |
-| **Course timeline** — every graded item in date order with unit and points | **Readings and materials** — readings, lectures and PDFs grouped by week |
-| ![Course timeline](docs/screenshots/3-course-timeline.png) | ![Readings and materials](docs/screenshots/4-course-materials.png) |
-| **Courses** — one card per course with what is next | **Assignment workspace** — checklist and what is still missing |
-| ![Courses](docs/screenshots/6-courses.png) | ![Assignment workspace](docs/screenshots/7-assignment-workspace.png) |
+| **Course home** — breadcrumbs, course menu, what is coming up, latest announcements, which kinds of material you have added | **Modules** — week by week like Canvas: readings and lectures, then graded work |
+| ![Course home](docs/screenshots/3-course-home.png) | ![Modules](docs/screenshots/4-course-modules.png) |
+| **Assignment page** — status, checklist, and what the course says about it | **Course context** — the announcement and syllabus rules that apply, with sources |
+| ![Assignment page](docs/screenshots/7-assignment-workspace.png) | ![Course context](docs/screenshots/11-assignment-context.png) |
+| **Syllabus** — section by section, policies marked | **Review inside the course** — one checklist; items without a date get a date box |
+| ![Syllabus](docs/screenshots/10-syllabus.png) | ![Review](docs/screenshots/2-review.png) |
+| **Semester setup** — saved sections with Modify | **Courses** — one card per course with progress |
+| ![Semester setup](docs/screenshots/1-setup.png) | ![Courses](docs/screenshots/6-courses.png) |
 | **Title page** — your paper format, filled from setup and the course | **Calendar** — month view coloured by course, with status and breaks |
 | ![Title page](docs/screenshots/8-title-page.png) | ![Calendar](docs/screenshots/9-calendar.png) |
 
@@ -118,13 +123,14 @@ Open http://localhost:1420. The browser preview uses the same app with an in-bro
 ## Using the app
 
 1. **Set up your semester.** On first launch Home sends you to **Semester setup** (top bar). Enter your name, university and program, pick the term and year, and set the first and last day of the semester. For courses, open **Courses → All Courses** in Canvas, copy the list and paste it into **Paste your course list**: codes, names, sections and the term are read for you. Use **Modify** on a course to add its instructor. Saved sections turn read only; press **Modify** to change them.
-2. **Fill each course from Canvas.** Open **Courses** in the bottom bar and click a course, then the **Add material** tab. In Canvas, open that course's **Modules** page, press **Cmd+A** (Windows: **Ctrl+A**) and **Cmd+C**, then paste into the box and click **Extract**. Syllabus and assignment PDFs or Word files can be dropped onto the same card. Something you imported before is read again for the course you add it to.
+2. **Fill each course.** Open **Courses** in the bottom bar and click a course. The course has a menu on the left like Canvas, with breadcrumbs at the top. Choose **Add material**, then say what you are adding: **Modules page**, **Syllabus**, **Announcement**, **Assignment instructions**, **Rubric**, **Course policies and rules** or **Reading**, or **Not sure**. For the Modules page, open it in Canvas, press **Cmd+A** (Windows: **Ctrl+A**) and **Cmd+C**, paste and click **Extract**. PDFs and Word files can be dropped onto the same card. For instructions or a rubric, pick which assignment they belong to.
 3. **Approve.** Right below, everything found is listed in groups: graded work and deadlines, readings and files, reminders. Untick anything you don't want. Projects that the course page only mentions ("Project 2 is due next week") have a date box so you can type the date before approving. Click **Approve N selected**. Open **source** on any row to see the exact lines it came from.
-4. **Use it.** The course's **Timeline** tab lists every graded item in date order, **Assignments** shows points and types, **Readings and materials** groups readings, lectures and PDFs by week. Click any assignment to open its workspace: the checklist, what is still missing, and a title page in your paper format (type the paper title once; name, university, course, instructor and date fill in).
-5. **Check Home and Calendar.** Home shows what is due in the next 7 days across all courses, the week after, and anything still waiting for a date. **Calendar** shows the month or week, coloured by course; click a day for its list, click an item to open it, and click a course in the legend to hide it.
-6. **Track your work.** The round button next to each item cycles **to do → in progress → submitted**; a toast lets you undo. Each course shows how much of its points you've submitted, and items carry urgency labels such as *tomorrow* or *2 days overdue*.
-7. **Keep it current.** When an instructor changes a date, paste the updated page or announcement. The app shows the old and new date side by side under **Review** and only changes it if you approve.
-8. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next.
+4. **Use the course.** **Home** shows what is coming up and the latest announcements. **Announcements**, **Syllabus** (section by section, policies marked), **Modules** (week by week), **Assignments** (filter by discussions, writing, projects, quizzes) and **Policies and rules** each have their own page. **Files and sources** lists everything you added with its label; change a label if the app guessed wrong.
+5. **Open an assignment.** Its page has **Overview** (status, checklist, what is missing), **Instructions**, **Rubric**, **Course context** (the syllabus rules that apply, announcements that mention it, and its unit's readings, each with where it came from) and, for papers, **Title page** in your format.
+6. **Check Home and Calendar.** Home shows what is due in the next 7 days across all courses, the week after, and anything still waiting for a date. **Calendar** shows the month or week, coloured by course; click a day for its list, click an item to open it, and click a course in the legend to hide it.
+7. **Track your work.** The round button next to each item cycles **to do → in progress → submitted**; a toast lets you undo. Each course shows how much of its points you've submitted, and items carry urgency labels such as *tomorrow* or *2 days overdue*.
+8. **Keep it current.** When an instructor changes a date, paste the updated page or announcement. The app shows the old and new date side by side under **Review** and only changes it if you approve.
+9. **Next semester.** Fourteen days before the semester ends, Home asks which subjects you're taking next.
 
 **Import a syllabus** (top bar) is for material that isn't tied to one course yet, such as a full program schedule. **Imported material** (bottom bar) lists everything you've pasted and lets you delete it.
 
@@ -150,7 +156,7 @@ cargo test --manifest-path src-tauri/Cargo.toml     # Rust database layer
 
 | Suite | What it covers |
 |---|---|
-| Vitest (112 tests) | Date parsing, classification, Canvas module lists, PDF and Word extraction, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
+| Vitest (120 tests) | Date parsing, classification, Canvas module lists, PDF and Word extraction, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
 | Rust (3 tests) | Atomic batches, typed results, parameter validation |
 | End to end | The real desktop build driven through WebDriver: first launch, semester setup, pasting a Canvas page into a course, approving, restart, data still there, assignment workspace |
 
