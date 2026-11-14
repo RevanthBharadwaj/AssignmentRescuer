@@ -18,7 +18,7 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | 1 | Plain text and manual entry | ✅ Done | Pipeline, provenance, review, merging, onboarding, reminders |
 | 2 | PDF and DOCX | 🟡 Mostly done | PDF and DOCX work; DOC, RTF and OCR for scanned PDFs remain |
 | 3 | Images and screenshots | ⏳ Not started | PNG, JPEG, WebP, HEIC; OCR and an optional vision model with consent |
-| 4 | CSV and XLSX | ⏳ Not started | Also JSON and ICS calendar files |
+| 4 | CSV and XLSX | 🟡 Partly | ICS files and calendar feeds done; CSV, XLSX and JSON remain |
 | 5 | Content classification | 🟡 Partly | Rule based classifier works; needs an evaluation set and accuracy targets |
 | 6 | Entity extraction | 🟡 Partly | Deterministic extractor and assignment context work; needs an evaluation set and an AI fallback |
 | 7 | Student confirmation workflow | ✅ Done | Delivered with milestone 1 |
@@ -29,6 +29,20 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 | 12 | Cross platform packaging | 🟡 Partly | CI builds .dmg and .msi; code signing not set up |
 
 ## Done so far
+
+**Calendar feed and calendar files (latest)**
+
+1. Paste the Canvas (or Blackboard) calendar feed link once in Semester setup; **Sync** downloads it through a Rust command that accepts only https calendar links (5 MB and 20 second limits, link never logged). This is the app's only network request.
+2. Calendar files and feeds are parsed directly: folded lines, escapes, all-day events, and UTC times converted to the student's own time zone (a Canvas 11:59 PM deadline stays 11:59 PM, not the next day).
+3. Events are matched to courses from Canvas's bracketed course tag, by code or by course name. Canvas assignment events become assignments with their link; calendar events (exams, live sessions) become calendar items.
+4. On sync, items that match saved ones exactly are skipped; items saved earlier without a time get their due time as a reviewable change; changed dates are shown old and new as always.
+5. .ics files can also be dropped on a course, keeping only that course's events.
+6. CI updated to the Node 24 versions of the GitHub actions (checkout, setup-node, upload-artifact v5).
+7. 127 Vitest tests and 4 Rust tests; the desktop end to end test now also checks the feed download path reports an unreachable server clearly.
+
+**CI results**
+
+The macOS and Windows jobs passed on GitHub for the Canvas-style courses update and produced installers, so both platforms are verified.
 
 **Canvas-style courses, material sorted by kind, assignment context (latest)**
 
@@ -90,13 +104,13 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
-| Type check, lint | ✅ | runs in CI | runs in CI |
-| 120 Vitest tests | ✅ | runs in CI | runs in CI |
-| 3 Rust tests | ✅ | runs in CI | runs in CI |
-| Production frontend build | ✅ | runs in CI | runs in CI |
-| Desktop app compiles and launches | ✅ | runs in CI | runs in CI |
+| Type check, lint | ✅ | ✅ | ✅ |
+| 127 Vitest tests | ✅ | ✅ | ✅ |
+| Rust tests | ✅ | ✅ | ✅ |
+| Production frontend build | ✅ | ✅ | ✅ |
+| Desktop app compiles and launches | ✅ | ✅ | ✅ (compiles; not launched in CI) |
 | End to end: import, approve, restart, data kept | ✅ | not supported by tauri-driver | not set up yet |
-| Installer build | not targeted | ✅ CI built the .dmg; it installs and opens after clearing the quarantine flag | runs in CI (.msi, .exe) |
+| Installer build | not targeted | ✅ .dmg; opens after clearing the quarantine flag | ✅ .msi and .exe built; not yet installed by a person |
 
 "Runs in CI" means the workflow is written but has not reported a result yet. macOS and Windows support should be called verified only after the Actions run on GitHub passes.
 
@@ -114,7 +128,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 ## Next steps
 
 1. Try the Canvas Assignments and Syllabus pages and one more course with real samples, and fix what they reveal.
-2. Confirm the CI run passes on Windows.
+2. Try the real Canvas calendar feed and report anything it gets wrong.
 3. Finish milestone 2: OCR for scanned PDFs together with screenshots (milestone 3).
 4. Add the names and roles of the 12 specialised agents from the original specification to `docs/ROADMAP.md`.
 5. Set up code signing for macOS and Windows installers (ad hoc signing first, Apple notarisation once there is a developer account).

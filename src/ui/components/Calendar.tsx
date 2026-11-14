@@ -5,6 +5,7 @@ import type { AcademicDate, ConfirmedRecord } from '../../core/types';
 import { addDays } from '../../core/extract/dates';
 import { CourseDot, StatusButton, Urgency, courseColor, dueOf, statusOf } from '../ux';
 import { formatDate } from '../format';
+import { FeedCard } from './FeedCard';
 
 /**
  * Semester calendar: month grid or week columns. Items are coloured by
@@ -105,6 +106,8 @@ export function Calendar() {
           <button type="button" className="secondary" aria-label="Next" onClick={() => shift(1)}>→</button>
         </div>
       </div>
+
+      <FeedCard compact />
 
       {courses.length > 0 && (
         <div className="legend" aria-label="Show or hide courses">

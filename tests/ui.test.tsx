@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
+import { vi } from 'vitest';
 import { App } from '../src/ui/App';
+
+// The desktop app downloads the feed in Rust; tests serve the synthetic feed.
+vi.mock('../src/ui/feedFetcher', async () => {
+  const { fixture } = await import('./helpers');
+  return { fetchFeed: async () => fixture('canvas-feed.ics') };
+});
 import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
 
 afterEach(cleanup);
@@ -292,6 +299,20 @@ describe('desktop UI', () => {
     expect(await screen.findByText(/schedule\.png/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Extract information' }));
     expect(await screen.findByText(/Import of png files is not available yet/)).toBeInTheDocument();
+  });
+
+  it('saves a calendar feed link in setup, syncs it, and hides the private part of the link', async () => {
+    const service = await setup('2026-09-02');
+    await typedSemester(service);
+    fireEvent.click(top('Semester setup'));
+    fireEvent.change(await screen.findByLabelText('Calendar feed link'), { target: { value: 'https://school.instructure.com/feeds/calendars/user_secret123abc.ics' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and sync' }));
+    expect(await screen.findByText(/Calendar synced: \d+ new/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Review extracted information' })).toBeInTheDocument();
+    fireEvent.click(top('Semester setup'));
+    expect(await screen.findByText('school.instructure.com/…3abc.ics')).toBeInTheDocument();
+    expect(screen.queryByText(/secret123/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
   });
 
   it('lists implemented, experimental and unavailable features', async () => {

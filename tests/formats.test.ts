@@ -43,8 +43,8 @@ describe('extractors', () => {
 
   it('keeps the feature registry honest', () => {
     const implementedInputs = FEATURES.filter((f) => f.id.startsWith('input.') && f.status === 'implemented').map((f) => f.id);
-    expect(implementedInputs.sort()).toEqual(['input.course_list', 'input.docx', 'input.lms_modules', 'input.manual', 'input.markdown', 'input.multiple', 'input.pdf', 'input.plain_text', 'input.txt']);
-    for (const f of ['doc', 'png', 'jpeg', 'csv', 'xlsx', 'ics', 'json'] as const) expect(isFormatImplemented(f)).toBe(false);
+    expect(implementedInputs.sort()).toEqual(['input.calendar_feed', 'input.course_list', 'input.docx', 'input.ics', 'input.lms_modules', 'input.manual', 'input.markdown', 'input.multiple', 'input.pdf', 'input.plain_text', 'input.txt']);
+    for (const f of ['doc', 'png', 'jpeg', 'csv', 'xlsx', 'json'] as const) expect(isFormatImplemented(f)).toBe(false);
     expect(FEATURES.find((f) => f.id === 'notifications.closed_app')?.status).toBe('unavailable');
   });
 });

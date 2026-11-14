@@ -26,6 +26,10 @@ export interface ExtractionContext extends DateContext {
   defaultCourseCode?: string | null;
   /** Current semester name, used to place dates without a year. */
   semesterName?: string | null;
+  /** IANA time zone for calendar times given in UTC. Defaults to the computer's. */
+  timeZone?: string;
+  /** Courses the student has, to match calendar events by course name. */
+  knownCourses?: { code: string; name: string | null }[];
 }
 
 interface Line {

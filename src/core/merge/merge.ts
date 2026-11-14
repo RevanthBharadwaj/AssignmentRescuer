@@ -46,7 +46,8 @@ export function diffFields(
   for (const [field, newValue] of Object.entries(newFields)) {
     if (!isKnown(newValue)) continue; // an unknown never erases a known value
     const oldValue = oldFields[field] ?? null;
-    if (isKnown(oldValue) && valuesEqual(oldValue, newValue)) continue;
+    const gainsTime = isDate(oldValue) && isDate(newValue) && oldValue.time === null && newValue.time !== null;
+    if (isKnown(oldValue) && valuesEqual(oldValue, newValue) && !gainsTime) continue;
     if (IGNORED_FIELDS.has(field) && isKnown(oldValue)) {
       if (normaliseKey(String(oldValue)) === normaliseKey(String(newValue))) continue;
     }

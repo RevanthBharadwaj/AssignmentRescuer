@@ -2,7 +2,7 @@
 
 A local first desktop app for students on macOS and Windows. Paste a syllabus, a Canvas page, an assignment prompt or a rubric, and Assignment Rescue turns it into a confirmed academic timeline where every deadline traces back to the exact line it came from. Nothing is saved until you approve it, and nothing leaves your computer.
 
-Built with Tauri 2, React, TypeScript and SQLite.
+Built with Tauri 2, React, TypeScript and SQLite. Builds and tests pass on macOS, Windows and Linux.
 
 ![Home screen](docs/screenshots/5-home.png)
 
@@ -41,6 +41,7 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | PDF and Word (.docx) files: syllabi, schedules, assignment instructions, rubric tables; each item keeps its page | ✅ Available |
 | Syllabus, assignment instructions, rubric, announcement pasted as text; TXT and Markdown files | ✅ Available |
 | Calendar: month and week views, coloured by course, breaks and semester days marked, filter by course | ✅ Available |
+| Canvas or Blackboard calendar feed: paste the link once, press Sync to pull new and changed deadlines with their due times; .ics files can also be dropped on a course | ✅ Available |
 | Mark work to do, in progress or submitted (with undo), course progress by points, urgency labels (due today, tomorrow, overdue) | ✅ Available |
 | Drag and drop files onto a course | ✅ Available |
 | Review inside each course: approve many items at once, type a date for anything that has none | ✅ Available |
@@ -52,7 +53,7 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | Next semester subject reminders (14 days before the semester ends, every 14 days until answered) | ✅ Available |
 | Content classification and extraction for free text | 🧪 Experimental, rule based |
 | Deadline reminders (7, 3, 1 and 0 days before) | 🧪 Experimental, shown while the app is open |
-| Scanned PDFs and screenshots (OCR), CSV, Excel, calendar files | ⏳ Not available yet (scans are detected and reported) |
+| Scanned PDFs and screenshots (OCR), CSV, Excel | ⏳ Not available yet (scans are detected and reported) |
 | Notifications while closed, AI agents, research, writing, APA, originality, statistics | ⏳ Not available yet |
 
 The app's own **Features** screen shows the same list, read from the registry the tests check, so it never claims more than it can do.
@@ -124,6 +125,7 @@ Open http://localhost:1420. The browser preview uses the same app with an in-bro
 
 1. **Set up your semester.** On first launch Home sends you to **Semester setup** (top bar). Enter your name, university and program, pick the term and year, and set the first and last day of the semester. For courses, open **Courses → All Courses** in Canvas, copy the list and paste it into **Paste your course list**: codes, names, sections and the term are read for you. Use **Modify** on a course to add its instructor. Saved sections turn read only; press **Modify** to change them.
 2. **Fill each course.** Open **Courses** in the bottom bar and click a course. The course has a menu on the left like Canvas, with breadcrumbs at the top. Choose **Add material**, then say what you are adding: **Modules page**, **Syllabus**, **Announcement**, **Assignment instructions**, **Rubric**, **Course policies and rules** or **Reading**, or **Not sure**. For the Modules page, open it in Canvas, press **Cmd+A** (Windows: **Ctrl+A**) and **Cmd+C**, paste and click **Extract**. PDFs and Word files can be dropped onto the same card. For instructions or a rubric, pick which assignment they belong to.
+2b. **Connect your calendar feed (optional).** In Canvas open **Calendar**, click **Calendar Feed** at the bottom right and copy the link. Paste it in **Semester setup → Calendar feed** and press **Save and sync**. New deadlines and due times appear under **Review**; items already saved are skipped. Press **Sync calendar feed** on the Calendar page whenever you want to update. The link is private: it stays on your computer and only shows as `school.instructure.com/…abcd.ics`.
 3. **Approve.** Right below, everything found is listed in groups: graded work and deadlines, readings and files, reminders. Untick anything you don't want. Projects that the course page only mentions ("Project 2 is due next week") have a date box so you can type the date before approving. Click **Approve N selected**. Open **source** on any row to see the exact lines it came from.
 4. **Use the course.** **Home** shows what is coming up and the latest announcements. **Announcements**, **Syllabus** (section by section, policies marked), **Modules** (week by week), **Assignments** (filter by discussions, writing, projects, quizzes) and **Policies and rules** each have their own page. **Files and sources** lists everything you added with its label; change a label if the app guessed wrong.
 5. **Open an assignment.** Its page has **Overview** (status, checklist, what is missing), **Instructions**, **Rubric**, **Course context** (the syllabus rules that apply, announcements that mention it, and its unit's readings, each with where it came from) and, for papers, **Title page** in your format.
@@ -156,8 +158,8 @@ cargo test --manifest-path src-tauri/Cargo.toml     # Rust database layer
 
 | Suite | What it covers |
 |---|---|
-| Vitest (120 tests) | Date parsing, classification, Canvas module lists, PDF and Word extraction, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
-| Rust (3 tests) | Atomic batches, typed results, parameter validation |
+| Vitest (127 tests) | Date parsing, classification, Canvas module lists, PDF and Word extraction, format detection, security, extraction, import pipeline, merging, database repository, transactions, reminders, onboarding, checklist, and React screens (setup, course pages, review) against a real SQLite database |
+| Rust (4 tests) | Atomic batches, typed results, parameter validation, calendar feed link validation |
 | End to end | The real desktop build driven through WebDriver: first launch, semester setup, pasting a Canvas page into a course, approving, restart, data still there, assignment workspace |
 
 Running the end to end test (Linux):
@@ -198,7 +200,7 @@ PROGRESS.md            where the project stands
 
 ## Privacy and security
 
-Everything is stored in one SQLite file in your user app data folder, and this version makes no network or AI calls. Imported text is treated as data, never as instructions: hidden characters are stripped, and lines that look like attempts to instruct software (for example "ignore previous instructions") are flagged on the review screen. The desktop shell enables no HTTP, shell or file system plugins. The `.gitignore` blocks databases and common document formats so student material can't be committed by accident; the only documents in this repository are synthetic test fixtures.
+Everything is stored in one SQLite file in your user app data folder. The app makes no AI calls. Its only network request is downloading your own calendar feed, and only when you press Sync; the feed link must be an https calendar link, downloads are capped at 5 MB and 20 seconds, and the link is never logged. Imported text is treated as data, never as instructions: hidden characters are stripped, and lines that look like attempts to instruct software (for example "ignore previous instructions") are flagged on the review screen. The desktop shell enables no HTTP, shell or file system plugins; the feed download is a single Rust command that accepts only calendar links. The `.gitignore` blocks databases and common document formats so student material can't be committed by accident; the only documents in this repository are synthetic test fixtures.
 
 ## Design
 

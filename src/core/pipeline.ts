@@ -15,6 +15,7 @@ import { sanitiseImportedText } from './security/untrusted';
 import { classify } from './classify/classifier';
 import { extractEntities, rubricKey, termCodeToSemester, type ExtractionContext } from './extract/entities';
 import { looksLikeModuleList, parseModuleList } from './extract/canvas';
+import { icsToRecords } from './extract/ics';
 import { approximateTermWindow } from './extract/dates';
 import { proposeChanges } from './merge/merge';
 import { fnv1a, newId, normaliseCourseCode, normaliseKey, sha256Hex } from './util';
@@ -222,6 +223,12 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
           extractionMethod: 'manual_entry', verificationStatus: 'verified', confirmationStatus: 'pending',
         },
       }];
+    } else if (p.source.format === 'ics' || /^\s*BEGIN:VCALENDAR/.test(p.source.text)) {
+      records = icsToRecords(p.source, {
+        timeZone: ctx.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        knownCourses: ctx.knownCourses ?? [],
+        onlyCourse: p.source.hints.course ?? null,
+      });
     } else if (looksLikeModuleList(p.source.text)) {
       const hinted = p.source.hints.course ?? ctx.defaultCourseCode ?? null;
       records = parseModuleList(p.source, ctx, hinted ? normaliseCourseCode(hinted) : null);

@@ -108,7 +108,7 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
         <div className="row">
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>Choose files…</button>
           <input ref={fileRef} type="file" multiple hidden aria-label="Choose files" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-          <span className="muted small">or drag and drop. PDF, Word, TXT and Markdown files work. Screenshots, scanned PDFs and spreadsheets are reported as not available yet.</span>
+          <span className="muted small">or drag and drop. PDF, Word, calendar (.ics), TXT and Markdown files work. Screenshots, scanned PDFs and spreadsheets are reported as not available yet.</span>
         </div>
         {files.length > 0 && (
           <ul className="file-list">

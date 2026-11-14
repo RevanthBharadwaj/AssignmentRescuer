@@ -1,0 +1,34 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Instructure//Canvas//EN
+X-WR-CALNAME:Alex Student Calendar (Example State)
+BEGIN:VEVENT
+DTSTAMP:20261114T120000Z
+DTSTART:20260907T045900Z
+SUMMARY:Week 1: Discussion Question 1 [2026FA DSC-6400-7AB12]
+UID:event-assignment-90001
+URL:https://school.instructure.com/courses/111/assignments/90001
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260914T045900Z
+SUMMARY:Week 2: Writing Assignment [2026FA DSC-6400-7AB12]
+UID:event-assignment-90002
+DESCRIPTION:Write a 900 word reflection.\nUse APA 7\, with a title page.
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261212
+SUMMARY:Final Exam [2026FA DSC-6400-7AB12]
+UID:event-calendar-event-5001
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260918T230000Z
+SUMMARY:Live Session: Office Hours with Dr. Patel and the teaching assi
+ stants [Statistical Methods]
+UID:event-calendar-event-5002
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260921T045900Z
+SUMMARY:Problem Set 3 [Statistical Methods]
+UID:event-assignment-90003
+END:VEVENT
+END:VCALENDAR

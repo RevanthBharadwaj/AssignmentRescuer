@@ -7,7 +7,7 @@ The universal input system follows the sequence from the feature specification. 
 | 1 | Plain text and manual entry (with pipeline, provenance, classification, extraction, review, merging, onboarding, reminder scheduling) | Done, verified on Linux; macOS and Windows pending CI |
 | 2 | PDF and DOCX (DOC and RTF where supported; OCR for scanned PDFs) | PDF and DOCX done; DOC, RTF and OCR remain |
 | 3 | Images and screenshots (PNG, JPEG, WebP, HEIC; OCR and optional vision model with consent) | Not started |
-| 4 | CSV and XLSX (JSON and ICS) keeping rows and columns | Not started |
+| 4 | CSV and XLSX (JSON and ICS) keeping rows and columns | ICS files and calendar feeds done |
 | 5 | Academic content classification: evaluation set and accuracy targets | Rule based classifier in place |
 | 6 | Entity extraction: evaluation set, AI fallback for low confidence cases | Deterministic extractor in place |
 | 7 | Student confirmation workflow | Done in milestone 1 |

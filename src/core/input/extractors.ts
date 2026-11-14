@@ -43,6 +43,7 @@ const EXTRACTORS: Partial<Record<InputFormat, Extractor>> = {
   plain_text: plainText,
   txt: plainText,
   markdown,
+  ics: plainText,
   pdf: extractPdf,
   docx: extractDocx,
 };

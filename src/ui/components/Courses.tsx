@@ -635,8 +635,8 @@ function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initial
         <div className="row">
           <button type="button" disabled={busy || !text.trim()} onClick={() => run([{ kind: 'text', text, label: `${kind === 'auto' ? 'Pasted' : MATERIAL_LABELS[kind]} (${d.code})` }])}>{busy ? 'Reading…' : 'Extract'}</button>
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>Choose files…</button>
-          <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.txt,.md,text/plain" aria-label="Choose files for this course" onChange={(e) => e.target.files && void onFiles(e.target.files)} />
-          <span className="muted small">or drop PDF, Word, TXT or Markdown files on this card.</span>
+          <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.ics,.txt,.md,text/plain" aria-label="Choose files for this course" onChange={(e) => e.target.files && void onFiles(e.target.files)} />
+          <span className="muted small">or drop PDF, Word, calendar (.ics), TXT or Markdown files on this card.</span>
         </div>
         {error && <p role="alert" className="error">{error}</p>}
       </div>

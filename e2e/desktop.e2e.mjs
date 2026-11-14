@@ -137,7 +137,12 @@ try {
   const menu = (label) => click(sid, `//nav[contains(@aria-label,'course menu')]/button[starts-with(normalize-space(), '${label}')]`);
   const kind = (label) => click(sid, `//label[contains(@class,'kind-option')][.//span[normalize-space()='${label}']]`);
   const approveAll = async () => {
+    // Close any toasts first: they sit over the bottom right of the window.
+    await wd('POST', `/session/${sid}/execute/sync`, { script: "document.querySelectorAll('.toast button[aria-label=\"Dismiss\"]').forEach((b) => b.click())", args: [] });
+    await sleep(200);
     await click(sid, "//button[starts-with(normalize-space(), 'Approve ') and contains(., 'selected')]");
+    await find(sid, "//button[normalize-space()='Approve 0 selected'] | //*[starts-with(normalize-space(), 'Nothing waiting for')] | //article[contains(@class,'proposal')]", 15000);
+    await sleep(800);
     // Anything that changes a saved value (for example semester dates) keeps the saved value here.
     for (let i = 0; i < 5; i++) {
       const n = await wd('POST', `/session/${sid}/execute/sync`, { script: "return document.querySelectorAll('article.proposal').length", args: [] });
@@ -153,7 +158,7 @@ try {
   await menu('Add material');
   await kind('Modules page');
   await fill(sid, 'Paste modules page for DSC 6400', PASTE);
-  await click(sid, "//button[normalize-space()='Extract']");
+  await click(sid, "//button[normalize-space()='Extract' and not(@disabled)]");
   await find(sid, "//h3[contains(., 'Graded work and deadlines')]");
   await wd('POST', `/session/${sid}/execute/sync`, { script: "[...document.querySelectorAll('h2')].find((h) => h.textContent.includes('Waiting for your review')).scrollIntoView({ block: 'start' }); window.scrollBy(0, -70);", args: [] });
   await shot(sid, '2-review');
@@ -162,15 +167,15 @@ try {
   // The syllabus, with its policies.
   await kind('Syllabus');
   await fill(sid, 'Paste syllabus for DSC 6400', readFileSync(new URL('../tests/fixtures/syllabus-policies.txt', import.meta.url), 'utf8'));
-  await click(sid, "//button[normalize-space()='Extract']");
-  await find(sid, "//div[contains(@class,'import-result')]");
+  await click(sid, "//button[normalize-space()='Extract' and not(@disabled)]");
+  await find(sid, "//div[contains(@class,'import-result')]//*[contains(., 'Syllabus (DSC 6400)')]");
   if (await wd('POST', `/session/${sid}/execute/sync`, { script: "return document.querySelectorAll('.review-table input:checked').length", args: [] })) await approveAll();
 
   // An announcement that mentions an assignment.
   await kind('Announcement');
   await fill(sid, 'Paste announcement for DSC 6400', 'Week 11 writing assignment update\nHi everyone, the Week 11 writing assignment now needs four scholarly sources instead of three.');
-  await click(sid, "//button[normalize-space()='Extract']");
-  await find(sid, "//div[contains(@class,'import-result')]");
+  await click(sid, "//button[normalize-space()='Extract' and not(@disabled)]");
+  await find(sid, "//div[contains(@class,'import-result')]//*[contains(., 'Announcement (DSC 6400)')]");
 
   await menu('Home');
   await find(sid, "//h2[normalize-space()='Coming up']");
@@ -207,6 +212,15 @@ try {
   await click(sid, "//nav[@aria-label='Workflow']/button[contains(., 'Calendar')]");
   await find(sid, "//div[@role='grid']");
   await shot(sid, '9-calendar');
+
+  // Calendar feed: the Rust download command answers with a readable error
+  // when the server cannot be reached (this sandbox has no internet).
+  await click(sid, "//nav[@aria-label='Main']/button[normalize-space()='Semester setup']");
+  await find(sid, "//input[@type='url']", 15000);
+  await fill(sid, 'Calendar feed link', 'https://calendar.invalid/feeds/calendars/user_test.ics');
+  await click(sid, "//button[normalize-space()='Save and sync']");
+  await find(sid, "//*[@role='alert' and (contains(., 'Could not reach the calendar server') or contains(., 'calendar server answered'))]", 30000);
+  await find(sid, "//dd[normalize-space()='calendar.invalid/…user_test.ics' or contains(., '…')]");
   console.log('PASS setup, course import and approval through the desktop SQLite commands');
 } catch (e) {
   console.error('PAGE TEXT:\n' + (await text(sid)));

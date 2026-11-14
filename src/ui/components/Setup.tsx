@@ -4,6 +4,7 @@ import { useAsync } from '../useAsync';
 import type { AcademicDate, ConfirmedRecord } from '../../core/types';
 import { parseCourseList } from '../../core/extract/courseList';
 import { dateFromInputs, errorMessage, formatDate } from '../format';
+import { FeedCard } from './FeedCard';
 
 /**
  * Semester setup. Saved sections are shown read-only with a Modify button;
@@ -91,7 +92,7 @@ export function Setup() {
       <div className="page-head">
         <span className="chip">set up</span>
         <h1 id="setup-title">Your semester</h1>
-        <p>Three short steps. Everything is saved on this computer, and you can change it later.</p>
+        <p>Three short steps, plus an optional calendar feed. Everything is saved on this computer, and you can change it later.</p>
       </div>
 
       <ol className="wizard">
@@ -214,6 +215,15 @@ export function Setup() {
               })}
             >Add course</button>
             {!sem && <p className="muted small">Tip: a pasted Canvas list sets the semester name for you.</p>}
+          </div>
+        </li>
+
+        {/* 04 calendar feed */}
+        <li className="card">
+          <span className="n">04</span>
+          <div>
+            <h2>Calendar feed <span className="muted small">optional</span></h2>
+            <FeedCard />
           </div>
         </li>
       </ol>

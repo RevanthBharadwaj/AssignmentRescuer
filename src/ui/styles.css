@@ -657,3 +657,7 @@ details[open].module > summary::before, details[open].section > summary::before 
   .course-nav-head { display: none; }
   .home-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- calendar feed ---------- */
+.feed-compact { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
+input[type='url'] { width: 100%; font-family: var(--font-mono); font-size: 13px; }

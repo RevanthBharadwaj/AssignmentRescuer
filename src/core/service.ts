@@ -36,6 +36,21 @@ export interface StudentProfile {
   name: string;
 }
 
+export interface CalendarFeed {
+  url: string;
+  lastSyncedAt: string | null;
+  lastResult: string | null;
+}
+
+export type FeedFetcher = (url: string) => Promise<string>;
+
+export interface FeedSyncResult {
+  newItems: number;
+  changedItems: number;
+  unchanged: number;
+  events: number;
+}
+
 /** Application service: the only layer the UI talks to. */
 
 export interface NextSemesterSettings {
@@ -75,6 +90,7 @@ export class AcademicService {
         semesterStart: (semester?.fields.startDate as AcademicDate | null)?.iso ?? null,
         semesterEnd: (semester?.fields.endDate as AcademicDate | null)?.iso ?? null,
         semesterName: (semester?.fields.name as string | null) ?? null,
+        knownCourses: confirmed.filter((r) => r.entityType === 'course').map((c) => ({ code: String(c.fields.code), name: (c.fields.name as string | null) ?? null })),
       },
     });
     await this.repo.saveImport(result);
@@ -91,6 +107,41 @@ export class AcademicService {
     const r = await this.import([{ kind: 'manual', entityType, fields }]);
     const p = r.proposals[0];
     return this.repo.approveProposal(p.id);
+  }
+
+  async calendarFeed(): Promise<CalendarFeed | null> {
+    return this.repo.getSetting<CalendarFeed | null>('calendarFeed', null);
+  }
+
+  async saveCalendarFeed(url: string | null): Promise<void> {
+    if (!url) return this.repo.setSetting('calendarFeed', null);
+    const prev = await this.calendarFeed();
+    await this.repo.setSetting('calendarFeed', { url: url.trim(), lastSyncedAt: prev?.url === url.trim() ? prev.lastSyncedAt : null, lastResult: null });
+  }
+
+  /**
+   * Download the student's calendar feed and propose what is new or changed.
+   * Events that match saved items exactly are not shown again.
+   */
+  async syncCalendarFeed(fetch: FeedFetcher, now = new Date().toISOString()): Promise<FeedSyncResult> {
+    const feed = await this.calendarFeed();
+    if (!feed) throw new Error('No calendar feed link is saved yet.');
+    const text = await fetch(feed.url);
+    const r = await this.import([{ kind: 'file', name: 'Calendar feed.ics', bytes: new TextEncoder().encode(text), hints: { material: 'other' } }]);
+    let unchanged = 0;
+    for (const p of r.proposals.filter((x) => x.kind === 'duplicate')) {
+      await this.reject(p.id);
+      unchanged++;
+    }
+    const res: FeedSyncResult = {
+      newItems: r.proposals.filter((p) => p.kind === 'create').length,
+      changedItems: r.proposals.filter((p) => p.kind === 'update' || p.kind === 'conflict').length,
+      unchanged,
+      events: r.sources.reduce((n, s) => n + s.records.length, 0),
+    };
+    const summary = `${res.newItems} new, ${res.changedItems} changed, ${res.unchanged} already saved`;
+    await this.repo.setSetting('calendarFeed', { ...feed, lastSyncedAt: now, lastResult: summary });
+    return res;
   }
 
   async student(): Promise<StudentProfile> {
