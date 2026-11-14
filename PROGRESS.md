@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 19: removing a course removes it everywhere (latest)**
+**Update 20: finished work hidden, order by time only, deadline timer (latest)**
+
+1. Finished work is hidden: submitted items on Home and in reminders, and whole units (Course home blocks and the Modules tab) once all their graded work is submitted or past its due date. "Show finished" switches bring them back. Dates decide, never a title or unit number.
+2. Everything that lists work is ordered by due date, then time of day, then the order it was imported. Discussion 3 due Nov 5 comes before Discussion 2 due Nov 13.
+3. A timer in the top bar counts down to the next Wednesday or Saturday 11:59 PM, shows how many unsubmitted items are due then, and turns orange in the last three hours. Click it to change the days, the time or switch it off.
+4. 212 Vitest tests pass. Not tried in a real window.
+
+**Update 19: removing a course removes it everywhere**
 
 1. Remove (Setup list, and a new Remove course link on each Courses card, with a confirmation) now deletes the course's assignments, events, announcements, waiting suggestions, imported material used only by that course, and its saved chat. Before, only the course entry went, and update 18 then recreated it from the leftover items.
 2. 203 Vitest tests pass.

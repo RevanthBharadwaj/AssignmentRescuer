@@ -8,6 +8,7 @@ import {
   MATERIAL_KINDS, MATERIAL_LABELS, buildAssignmentContext, policySections, sourceKind, sourcesForCourse, toAnnouncement,
   type CourseSource, type MaterialKind, type PolicyTopic,
 } from '../../core/courseContent';
+import { byTime, unitFinished } from '../../core/finished';
 import { Hint } from './Guide';
 import { structureSyllabus } from '../../core/syllabusStructure';
 import { FIELD_LABELS, errorMessage, formatDate, formatValue } from '../format';
@@ -24,9 +25,8 @@ import { completeAi } from '../aiClient';
 import { CourseDot, ProgressBar, StatusButton, Urgency, courseColor, courseProgress, statusOf } from '../ux';
 
 const dateOf = (r: ConfirmedRecord) => ((r.fields.dueDate ?? r.fields.date ?? null) as AcademicDate | null);
-// Date first, then title, so "Question 1" comes before "Question 2" on the same day.
-const sortKey = (r: ConfirmedRecord) => `${dateOf(r)?.iso ?? `9999-${String(dateOf(r)?.month ?? 99).padStart(2, '0')}-${String(dateOf(r)?.day ?? 99).padStart(2, '0')}`}|${String(r.fields.title ?? '')}`;
-const byDue = (a: ConfirmedRecord, b: ConfirmedRecord) => sortKey(a).localeCompare(sortKey(b), undefined, { numeric: true });
+// Date, then time, then the order imported. Never the title or unit number.
+const byDue = byTime;
 const unitNum = (u: unknown) => Number(/(\d+)/.exec(String(u ?? ''))?.[1] ?? 999);
 
 const KIND_LABEL: Record<string, string> = { reading: 'reading', reading_file: 'reading file', lecture: 'lecture', file: 'file', page: 'page', forum: 'forum', link: 'link', tool: 'tool', note: 'reminder' };
@@ -418,7 +418,7 @@ function Syllabus({ d }: { d: CourseData }) {
 /* ================= modules ================= */
 
 function Modules({ d, focus }: { d: CourseData; focus?: number }) {
-  const { go } = useApp();
+  const { go, today } = useApp();
   useEffect(() => {
     if (focus === undefined) return;
     const el = document.getElementById(`unit-${focus}`);
@@ -430,13 +430,17 @@ function Modules({ d, focus }: { d: CourseData; focus?: number }) {
     const u = String(r.fields.unit ?? 'Course resources');
     units.set(u, [...(units.get(u) ?? []), r]);
   }
-  const ordered = [...units.entries()].sort((a, b) => unitNum(a[0]) - unitNum(b[0]));
+  const [showFinished, setShowFinished] = useState(false);
+  const allUnits = [...units.entries()].sort((a, b) => unitNum(a[0]) - unitNum(b[0]));
+  const isDone = ([unit, list]: [string, ConfirmedRecord[]]) => unitFinished({ graded: list.filter((r) => r.entityType === 'assignment') }, today) && !(focus !== undefined && (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus);
+  const finishedUnits = allUnits.filter(isDone);
+  const ordered = showFinished ? allUnits : allUnits.filter((e) => !isDone(e));
   const order = (r: ConfirmedRecord) => (r.entityType === 'course_material' ? (r.fields.kind === 'note' ? 3 : 0) : 1);
 
   return (
     <>
       <PageHead d={d} title="Modules" sub="Your course week by week, the way Canvas lists it: readings and lectures first, then graded work." />
-      {ordered.length === 0 ? <Empty d={d} kind="modules" text="No modules yet. In Canvas open Modules, select all, copy, and paste it here." /> : ordered.map(([unit, list], i) => (
+      {allUnits.length === 0 ? <Empty d={d} kind="modules" text="No modules yet. In Canvas open Modules, select all, copy, and paste it here." /> : ordered.length === 0 ? <p className="muted">Every unit is finished.</p> : ordered.map(([unit, list], i) => (
         <details key={unit} id={`unit-${unitNum(unit) === 999 ? 0 : unitNum(unit)}`} className={`card module stagger ${focus !== undefined && (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus ? 'focused' : ''}`} style={{ ['--i' as string]: i }} open={focus === undefined || (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus}>
           <summary><h2>{unit}</h2><span className="muted small">{list.filter((r) => r.entityType === 'assignment').length} graded · {list.filter((r) => r.entityType === 'course_material' && r.fields.kind !== 'note').length} readings and files</span></summary>
           <ul className="module-items">
@@ -464,6 +468,11 @@ function Modules({ d, focus }: { d: CourseData; focus?: number }) {
           </ul>
         </details>
       ))}
+      {finishedUnits.length > 0 && (
+        <button type="button" className="link muted-link small" aria-pressed={showFinished} onClick={() => setShowFinished((v) => !v)}>
+          {showFinished ? 'Hide finished units' : `Show finished units (${finishedUnits.length})`}
+        </button>
+      )}
     </>
   );
 }

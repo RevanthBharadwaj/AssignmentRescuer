@@ -10,6 +10,7 @@ import { Setup } from './components/Setup';
 import { useAsync } from './useAsync';
 import { Calendar } from './components/Calendar';
 import { Chat } from './components/Chat';
+import { DeadlineTimer } from './components/DeadlineTimer';
 import { useBackgroundReminders, useReminderLoop } from './useReminderLoop';
 import { Tour } from './components/Guide';
 import { Toasts, type Toast } from './ux';
@@ -101,6 +102,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
             <button type="button" className={route.name === 'features' ? 'active' : ''} aria-current={route.name === 'features' ? 'page' : undefined} onClick={() => go({ name: 'features' })}>Features</button>
           </nav>
           {mode === 'browser-preview' && <span className="preview-note">browser preview</span>}
+          <DeadlineTimer />
           <span className="clock" aria-label="Local time">{clock}</span>
         </header>
 

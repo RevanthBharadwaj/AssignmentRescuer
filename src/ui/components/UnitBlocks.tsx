@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useApp } from '../AppContext';
+import { unitFinished } from '../../core/finished';
 import { useAsync } from '../useAsync';
 import { ProgressBar, courseColor } from '../ux';
 import { prettyDate } from '../../core/schedule';
@@ -15,9 +17,14 @@ const STATE_LABEL: Record<UnitSummary['state'], string> = {
 /** One block per unit, like the Unit 1 to Unit 7 buttons on the Canvas home page. Opens that unit in Modules. */
 export function UnitBlocks({ code }: { code: string }) {
   const { service, version, go, today } = useApp();
-  const { data } = useAsync(() => service.units(code, today), [version, code, today]);
-  if (!data || data.length === 0) return null;
+  const { data: all } = useAsync(() => service.units(code, today), [version, code, today]);
+  const [showFinished, setShowFinished] = useState(false);
+  if (!all || all.length === 0) return null;
+  // A unit is finished when all its graded work is submitted or past its due date. Dates decide, never the unit's name or number.
+  const finished = all.filter((u) => unitFinished(u, today));
+  const data = showFinished ? all : all.filter((u) => !unitFinished(u, today));
   return (
+    <>
     <section className="unit-grid" aria-label="Units">
       {data.map((u, i) => {
         const pct = u.graded.length ? Math.round((u.submitted / u.graded.length) * 100) : 0;
@@ -46,5 +53,11 @@ export function UnitBlocks({ code }: { code: string }) {
         );
       })}
     </section>
+    {finished.length > 0 && (
+      <button type="button" className="link muted-link small" aria-pressed={showFinished} onClick={() => setShowFinished((v) => !v)}>
+        {showFinished ? 'Hide finished units' : `Show finished units (${finished.length})`}
+      </button>
+    )}
+    </>
   );
 }

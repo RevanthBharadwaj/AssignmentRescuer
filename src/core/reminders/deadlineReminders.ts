@@ -52,6 +52,7 @@ export function buildDeadlineReminders(
   const offsets = [...new Set(settings.offsetsDays.filter((o) => Number.isInteger(o) && o >= 0 && o <= 60))].sort((a, b) => b - a);
   const out: ScheduledReminder[] = [];
   for (const r of records) {
+    if (r.fields.status === 'submitted') continue;
     const d = dateOf(r);
     if (!d || !d.date.iso) continue;
     for (const off of offsets) {
@@ -77,7 +78,7 @@ export function buildDeadlineReminders(
       });
     }
   }
-  return out.sort((a, b) => (a.remindOn + a.remindAt).localeCompare(b.remindOn + b.remindAt));
+  return out.sort((a, b) => (a.remindOn + a.remindAt).localeCompare(b.remindOn + b.remindAt) || a.dueDate.localeCompare(b.dueDate) || (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99'));
 }
 
 export function remindersDueToday(all: ScheduledReminder[], today: string): ScheduledReminder[] {

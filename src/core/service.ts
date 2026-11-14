@@ -31,6 +31,7 @@ import { termMismatch } from './term';
 import { dueRange, toolInfo, type ToolCall, type ToolId } from './tools';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
 import { sourceKind, sourcesForCourse } from './courseContent';
+import { byTime } from './finished';
 import { addDays } from './extract/dates';
 
 export interface SemesterInput {
@@ -522,7 +523,7 @@ export class AcademicService {
         const d = dateOf(r);
         return d !== null && d >= today && d <= limit;
       })
-      .sort((a, b) => (dateOf(a) as string).localeCompare(dateOf(b) as string) || String(a.fields.title ?? '').localeCompare(String(b.fields.title ?? ''), undefined, { numeric: true }));
+      .sort(byTime);
   }
 
   // ---------- syllabus facts, briefs, units ----------

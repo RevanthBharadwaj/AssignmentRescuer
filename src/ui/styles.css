@@ -856,3 +856,15 @@ main:has(.chat) { max-width: none; padding: 14px 24px calc(var(--dock-h) + 14px)
 .course-slot { display: flex; flex-direction: column; gap: 6px; }
 .course-slot .course-card { flex: 1; }
 .remove-ask { margin: 0; color: var(--ink-soft); }
+
+/* ---------- deadline timer in the top bar ---------- */
+.deadline-timer { position: relative; }
+.timer-btn { display: inline-flex; gap: 10px; align-items: baseline; padding: 4px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; }
+.timer-btn:hover { border-color: var(--lime-300); }
+.timer-btn .timer-left { font-family: var(--font-mono); color: var(--lime-200); }
+.timer-btn .timer-count { font-size: 12px; color: var(--ink-soft); }
+.timer-btn.urgent { border-color: var(--accent-400); }
+.timer-btn.urgent .timer-left { color: var(--accent-400); }
+.timer-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; display: grid; gap: 10px; min-width: 260px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0,0,0,.5); }
+.timer-days { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.timer-pop .check { display: inline-flex; gap: 6px; align-items: center; }

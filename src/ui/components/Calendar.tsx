@@ -1,3 +1,4 @@
+import { byTime } from '../../core/finished';
 import { useMemo, useState } from 'react';
 import { Hint } from './Guide';
 import { useApp } from '../AppContext';
@@ -62,7 +63,7 @@ export function Calendar() {
       };
       map.set(m.date, [...(map.get(m.date) ?? []), rec]);
     }
-    for (const list of map.values()) list.sort((a, b) => String(a.fields.title).localeCompare(String(b.fields.title), undefined, { numeric: true }));
+    for (const list of map.values()) list.sort(byTime);
     return map;
   }, [data, hidden]);
 

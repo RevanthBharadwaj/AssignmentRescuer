@@ -10,6 +10,7 @@ import { CountUp, CourseDot, StatusButton, Urgency, statusOf } from '../ux';
 
 export function Home() {
   const { service, version, refresh, today, go } = useApp();
+  const [showFinished, setShowFinished] = useState(false);
   const { data } = useAsync(async () => {
     const records = await service.repository.listRecords();
     return {
@@ -25,7 +26,9 @@ export function Home() {
   }, [version, today]);
 
   if (!data) return <p className="muted">Loading…</p>;
-  const { onboarding, prompt, deadlines, reminders, pending, next, courses, undated } = data;
+  const { onboarding, prompt, reminders, pending, next, courses, undated } = data;
+  const finishedCount = data.deadlines.filter((r) => r.fields.status === 'submitted').length;
+  const deadlines = showFinished ? data.deadlines : data.deadlines.filter((r) => r.fields.status !== 'submitted');
   const semester = onboarding.questions.find((q) => q.id === 'semester')?.answer;
   const weekEnd = addDays(today, 7);
   const thisWeek = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! <= weekEnd);
@@ -37,9 +40,9 @@ export function Home() {
     const c = courseOf(code);
     return [c?.fields.name, String(code ?? ''), c?.fields.instructor ? `Professor ${String(c.fields.instructor)}` : ''].filter(Boolean).join(' · ');
   };
-  // Earliest due date first, then the time of day, then the title. Not by unit number.
+  // Earliest due date first, then the time of day; ties keep the order they were imported. Never by title or unit number.
   const reminderList = [...reminders].sort((a, b) =>
-    a.dueDate.localeCompare(b.dueDate) || (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99') || a.title.localeCompare(b.title, undefined, { numeric: true }));
+    a.dueDate.localeCompare(b.dueDate) || (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99'));
 
   const row = (r: (typeof deadlines)[number], i: number) => {
     const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
@@ -124,6 +127,11 @@ export function Home() {
         <span className="chip">this week</span>
         <h2 id="due-title">Due in the next 7 days</h2>
         {thisWeek.length === 0 ? <p className="muted">Nothing confirmed is due this week.</p> : <ul className="deadlines">{thisWeek.map(row)}</ul>}
+        {finishedCount > 0 && (
+          <button type="button" className="link muted-link small" aria-pressed={showFinished} onClick={() => setShowFinished((v) => !v)}>
+            {showFinished ? 'Hide finished work' : `Show finished work (${finishedCount})`}
+          </button>
+        )}
       </section>
 
       {later.length > 0 && (

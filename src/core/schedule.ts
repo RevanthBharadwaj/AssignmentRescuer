@@ -122,7 +122,7 @@ export function milestonesFor(records: ConfirmedRecord[], factsByCourse: Record<
     }
     out.push({ ...base, key: `${r.key}|due`, kind: 'due', date: due.iso, time: dueTime, action: 'Submit' });
   }
-  return out.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+  return out.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '99:99').localeCompare(b.time ?? '99:99'));
 }
 
 function to24(s: string): string | null {
@@ -203,7 +203,7 @@ function dueWord(n: number, kind: Milestone['kind']): string {
  */
 export function formatEmail(reminders: Reminder[], courses: Record<string, CourseInfo>, name: string): Email | null {
   if (!reminders.length) return null;
-  const list = [...reminders].sort((a, b) => a.milestone.date.localeCompare(b.milestone.date) || a.milestone.title.localeCompare(b.milestone.title));
+  const list = [...reminders].sort((a, b) => a.milestone.date.localeCompare(b.milestone.date) || (a.milestone.time ?? '99:99').localeCompare(b.milestone.time ?? '99:99'));
   const who = (r: Reminder) => [r.milestone.courseCode, courses[r.milestone.courseCode]?.instructor].filter(Boolean).join(', ');
   const first = list[0];
   const lead = `${first.milestone.title} ${dueWord(first.daysBefore, first.milestone.kind)}${who(first) ? ` (${who(first)})` : ''}`;
