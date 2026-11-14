@@ -3,11 +3,14 @@
 Reviewed against the app's goals: local first, free first, light to install, private by default.
 
 ## Already in use
+Crossref, OpenAlex (see below).
 Tauri 2 (desktop shell), PDF.js (PDF text), SQLite (rusqlite in the app, sql.js in tests), fflate (Word and zip files), Ollama (free local models).
 
+## Built in update 10
+Crossref and OpenAlex lookups (through the desktop app, three allowed hosts, only the search words sent), DOI checking, and APA 7 references and in text citations written by `src/core/scholar.ts` (no Citation.js needed for journal articles). Saved references are the only sources the chat may cite.
+
 ## Add next, in this order
-1. Crossref, OpenAlex, Semantic Scholar and Unpaywall (free web APIs, no install). They let the chat suggest and verify real sources and DOIs, which removes the main risk of AI invented citations.
-2. Citation.js with the APA 7 CSL style. Turns a verified source into a correct reference and in text citation.
+1. Semantic Scholar and Unpaywall (open access links). Books, web pages and APA edge cases in the citation formatter.
 3. Zod. Checks the JSON the AI returns so a malformed answer cannot reach the database.
 4. Tesseract.js. Reads text from Canvas screenshots when no vision model is installed.
 5. Tiptap. A proper editor for the drafts the chat produces.

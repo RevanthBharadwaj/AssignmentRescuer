@@ -23,6 +23,7 @@ import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts }
 import { buildBrief, briefToText, type Brief } from './brief';
 import { milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
 import { summariseUnits, type UnitSummary } from './units';
+import { apaText, inText, type Work } from './scholar';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
 import { sourceKind, sourcesForCourse } from './courseContent';
 import { addDays } from './extract/dates';
@@ -201,6 +202,30 @@ export class AcademicService {
       unknownFields: [],
       evidence: [this.aiProvenance(a.evidence[0]?.sourceId ?? 'none', String(a.fields.title), settings, now)],
     }, now);
+  }
+
+  /** Keep a verified source, as an APA reference, with the assignment it is for. */
+  async saveReference(assignmentId: string, work: Work, now = new Date().toISOString()): Promise<ConfirmedRecord> {
+    const a = (await this.repo.listRecords('assignment')).find((r) => r.id === assignmentId);
+    if (!a) throw new Error('That assignment no longer exists.');
+    const id = work.doi ?? work.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+    return this.repo.saveGenerated({
+      entityType: 'ai_note',
+      key: `${String(a.fields.courseCode)}|ref|${a.key}|${id}`,
+      fields: {
+        kind: 'reference', title: work.title, courseCode: String(a.fields.courseCode ?? ''), sourceId: null,
+        summary: apaText(work), actions: [inText(work)], cautions: [], assignmentKeys: [a.key], provider: work.from, model: 'catalogue record', createdAt: now,
+      },
+      unknownFields: [],
+      evidence: [{
+        sourceId: a.evidence[0]?.sourceId ?? 'none', sourceType: 'pasted_text', originalName: `${work.from === 'crossref' ? 'Crossref' : 'OpenAlex'} record`, importedAt: now, page: null, imageRegion: null, textLocation: null,
+        excerpt: work.doi ? `doi:${work.doi}` : work.title, extractionMethod: 'deterministic_text', verificationStatus: 'verified', confirmationStatus: 'confirmed',
+      }],
+    }, now);
+  }
+
+  async referencesFor(assignmentKey: string): Promise<ConfirmedRecord[]> {
+    return (await this.aiNotesFor(assignmentKey)).filter((n) => n.fields.kind === 'reference').reverse();
   }
 
   /** AI notes for one assignment, newest first. */
@@ -574,13 +599,16 @@ export class AcademicService {
     const upcoming = mine.filter((r) => dueOf(r) && (dueOf(r) as string) >= today).sort((a, b) => (dueOf(a) as string).localeCompare(dueOf(b) as string)).slice(0, 8)
       .map((r) => `${String(r.fields.title)} (${dueOf(r)}${typeof r.fields.pointsPossible === 'number' ? `, ${r.fields.pointsPossible} pts` : ''})`).join('\n');
     let focus: { title: string; brief: string } | null = null;
+    let references: string[] = [];
     if (assignmentId) {
+      const a = records.find((r) => r.id === assignmentId);
+      if (a) references = (await this.referencesFor(a.key)).map((n) => String(n.fields.summary));
       const b = await this.briefFor(assignmentId);
       if (b) focus = { title: b.title, brief: briefToText(b) };
     }
     return chatSystem({
       courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
-      grading, upcoming, focus,
+      grading, upcoming, focus, references,
     }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
   }
 

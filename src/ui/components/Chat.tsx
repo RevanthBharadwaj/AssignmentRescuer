@@ -6,6 +6,7 @@ import { looksLikeMaterial, type ChatMessage } from '../../core/chat';
 import { PROVIDER_NAME, aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
 import { errorMessage } from '../format';
+import { SourceFinder } from './SourceFinder';
 
 const uid = () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const preview = (t: string) => {
@@ -170,6 +171,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         <div ref={end} />
       </div>
 
+      <SourceFinder assignmentId={assignmentId} />
       {error && <p role="alert" className="error">{error}</p>}
       {material && <p className="chat-hint small">This looks like course material. It will be sorted into {code || 'the matching course'} and saved once. <button type="button" className="link" onClick={() => setAsQuestion(true)}>send it as a question instead</button></p>}
       <div className="chat-compose">

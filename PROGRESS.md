@@ -30,12 +30,18 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 8: chat, briefs, unit blocks and reminders (latest)**
+**Update 10: real sources and APA references (latest)**
+
+1. Source finder in Chat: Crossref and OpenAlex search, DOI check, APA 7 references, saved per assignment; the chat cites only saved sources.
+2. Free local model picker with info bubbles and setup help.
+3. 163 Vitest tests and 9 Rust tests pass.
+
+**Update 8: chat, briefs, unit blocks and reminders**
 
 1. Chat tab with its own look; pastes are classified and imported once, answers use fenced, untrusted course material, and OpenAI keys are kept in the keychain.
 2. Syllabus facts (grading table, posting rules, readings per unit) feed the Brief tab, the unit blocks and the reminder plan.
 3. Reminders with first post milestones on the calendar, desktop notifications and Twilio texts; the phone number stays in local settings only.
-4. 156 Vitest tests and the Rust tests pass. Texts could not be sent live from the build sandbox.
+4. 163 Vitest tests and the Rust tests pass. Texts could not be sent live from the build sandbox.
 
 **Fix: PDF import on macOS**
 

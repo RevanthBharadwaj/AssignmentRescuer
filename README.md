@@ -35,6 +35,7 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 | Canvas course list (Courses → All Courses) pasted into setup: codes, names, sections and term | ✅ Available |
 | Course home with Unit 1 to 7 blocks (state, graded count, points, next due) that open that unit's modules | ✅ Available |
 | Chat tab (violet, in the bottom dock): paste anything copied from Canvas and it is sorted into the right course without duplicates; ask about an assignment with your own saved material; works with Ollama, OpenAI or Claude | ✅ Available |
+| Real source lookup in Chat: search Crossref and OpenAlex or check a DOI, get an APA 7 reference and in text citation, save it with the assignment; the chat cites only saved sources | ✅ Available |
 | Assignment Brief tab: what is required, scoring, resources to read (from the syllabus and your imports) and key dates | ✅ Available |
 | Reminders: the day before and the day of, every day for 5 days before big assignments, plus the Wednesday first post for Saturday discussions; desktop notification and text through your own Twilio account while the app is open | ✅ Available |
 | Course pages laid out like Canvas: breadcrumbs, and a course menu with Home, Announcements, Syllabus, Modules, Assignments, Policies and rules, Files and sources, Add material | ✅ Available |
