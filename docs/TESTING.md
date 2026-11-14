@@ -8,7 +8,7 @@ All fixtures in `tests/fixtures/` are synthetic. Never add real student document
 |---|---|
 | `npm test` | Vitest: dates, classifier, formats and extractors, security, extraction, pipeline, merging, repository, driver contract, reminders, onboarding, checklist, and React UI flows in jsdom against a real SQLite (sql.js) database |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust SQLite layer: atomic batches, typed results, parameter validation |
-| `node e2e/desktop.e2e.mjs <binary>` | The real desktop build through WebDriver: boot, paste import, approval, restart, data still there, assignment workspace |
+| `node e2e/desktop.e2e.mjs <binary>` | The real desktop build through WebDriver: first launch, paste import, approval including flagged items, restart, data still there, courses, assignment workspace, features. With `SCREENSHOT_DIR` set it saves the README screenshots |
 | `npm run typecheck`, `npm run lint`, `npm run build` | Static checks and production bundle |
 
 ## Specification coverage (milestone 1)

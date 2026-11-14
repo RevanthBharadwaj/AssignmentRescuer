@@ -4,7 +4,7 @@ The repository was built locally and has no remote yet. These steps push it to a
 
 ## 1. Create the empty repository
 
-On github.com, signed in to the account you want to use, create a new **private** repository named `assignment-rescue-ai`. Do not add a README, license or .gitignore (the project already has them).
+On github.com, signed in to the account you want to use, create a new **private** repository (this project uses `RevanthBharadwaj/AssignmentRescuer`). Do not add a README, license or .gitignore (the project already has them).
 
 ## 2. Unpack the bundle
 

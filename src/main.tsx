@@ -4,6 +4,9 @@ import { App } from './ui/App';
 import { openDatabase } from './db/open';
 import { Repository } from './db/repository';
 import { AcademicService } from './core/service';
+import '@fontsource-variable/dm-sans';
+import '@fontsource-variable/jetbrains-mono';
+import '@fontsource/noto-serif/300.css';
 import './ui/styles.css';
 import { errorMessage } from './ui/format';
 

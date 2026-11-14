@@ -11,8 +11,11 @@ export function Sources() {
 
   return (
     <section aria-labelledby="sources-title">
-      <h1 id="sources-title">Imported material</h1>
-      <p className="muted">Everything stays on this computer. Deleting a source also removes records that came only from it.</p>
+      <div className="page-head">
+        <span className="chip">trace it</span>
+        <h1 id="sources-title">Imported material</h1>
+        <p>Everything stays on this computer. Deleting a source also removes records that came only from it.</p>
+      </div>
       {sources.length === 0 && <p className="muted">Nothing imported yet.</p>}
       {sources.map((s) => (
         <div key={s.id} className="card compact">
@@ -40,7 +43,11 @@ export function Features() {
   const groups: FeatureStatus[] = ['implemented', 'experimental', 'unavailable'];
   return (
     <section aria-labelledby="features-title">
-      <h1 id="features-title">What this version can do</h1>
+      <div className="page-head">
+        <span className="chip">status</span>
+        <h1 id="features-title">What this version can do</h1>
+        <p>Every feature is listed honestly as available, experimental or not available yet.</p>
+      </div>
       {groups.map((g) => (
         <div key={g} className="card">
           <h2>{STATUS_TEXT[g]}</h2>

@@ -38,25 +38,45 @@ async function find(sid, xpath, timeout = 10000) {
     catch (e) { if (Date.now() > end) throw e; await sleep(250); }
   }
 }
-const click = async (sid, xp) => wd('POST', `/session/${sid}/element/${await find(sid, xp)}/click`, {});
+// Centre the element first so the fixed bottom dock never covers it.
+const click = async (sid, xp) => {
+  const id = await find(sid, xp);
+  await wd('POST', `/session/${sid}/execute/sync`, {
+    script: "const r = document.evaluate(arguments[0], document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; if (r) r.scrollIntoView({ block: 'center' });",
+    args: [xp],
+  });
+  return wd('POST', `/session/${sid}/element/${id}/click`, {});
+};
 const text = async (sid) => wd('POST', `/session/${sid}/execute/sync`, { script: 'return document.body.innerText', args: [] });
 
-function isoIn(days) {
-  const d = new Date(Date.now() + days * 86400000);
-  return d;
-}
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const due = isoIn(6);
-const dueText = `${MONTHS[due.getMonth()]} ${due.getDate()}, ${due.getFullYear()}`;
+const on = (days) => {
+  const d = new Date(Date.now() + days * 86400000);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+};
+const year = new Date(Date.now() - 80 * 86400000).getFullYear();
+// Synthetic course material with dates relative to today.
 const PASTE = [
-  'CIS 6930 Applied Machine Learning',
-  `Homework 7 due ${dueText} at 11:59 PM ET (40 points)`,
-  `Lab 4 due ${dueText} at 5:00 PM ET`,
+  `${['Spring', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Fall', 'Fall'][new Date().getMonth()]} ${year} Syllabus`,
+  'University of North Florida',
+  'Master of Science in Computing and Information Sciences',
+  'CIS 6930: Applied Machine Learning',
+  'Instructor: Dr. Jane Rivera',
+  `Classes begin ${on(-80)}`,
+  `Last day of classes: ${on(28)}`,
+  `Homework 7 due ${on(2)} at 11:59 PM ET (40 points)`,
+  `Discussion 9: initial post due ${on(3)} at 11:59 PM ET, replies due ${on(6)} at 11:59 PM ET`,
+  `Lab 4 due ${on(6)} at 5:00 PM ET`,
+  `Read Chapter 11 by ${on(8)}`,
+  `Final Exam: ${on(11)}`,
+  `Final Project due ${on(25)} at 5:00 PM`,
 ].join('\n');
 
 let sid = await session();
 try {
   await find(sid, "//h1[normalize-space()='Your semester']", 20000);
+  await sleep(800);
+  await shot(sid, '0-home-first-launch');
   await click(sid, "//nav/button[contains(., 'Add information')]");
   await find(sid, "//textarea[@id='paste']");
   // Set the value the way React expects, then fire an input event.
@@ -70,10 +90,16 @@ try {
   await find(sid, "//h1[normalize-space()='Review extracted information']");
   await shot(sid, '2-review');
   await click(sid, "//button[normalize-space()='Approve all new items with no warnings']");
+  // Items with warnings (for example a time with no time zone) need a decision each.
+  for (let i = 0; i < 10; i++) {
+    const remaining = await wd('POST', `/session/${sid}/execute/sync`, { script: "return [...document.querySelectorAll('article button')].filter(b => b.innerText === 'Approve').length", args: [] });
+    if (!remaining) break;
+    await click(sid, "(//article//button[normalize-space()='Approve'])[1]");
+    await sleep(300);
+  }
   await find(sid, "//*[normalize-space()='Nothing waiting for review.']", 15000);
   await click(sid, "//nav/button[contains(., 'Home')]");
   await find(sid, "//*[normalize-space()='Homework 7']");
-  await shot(sid, '3-home');
   const body1 = await text(sid);
   assert.match(body1, /Lab 4/);
   console.log('PASS import and approve through the desktop SQLite commands');
@@ -88,12 +114,18 @@ await sleep(1500);
 sid = await session();
 try {
   await find(sid, "//*[normalize-space()='Homework 7']", 20000);
+  await sleep(800);
+  await shot(sid, '3-home');
   await click(sid, "//nav/button[contains(., 'Courses')]");
   await find(sid, "//h2[contains(., 'CIS 6930')]");
+  await shot(sid, '5-courses');
   await click(sid, "//button[normalize-space()='Open']");
   const body = await text(sid);
   assert.match(body, /Requirements checklist/);
   await shot(sid, '4-assignment-workspace');
+  await click(sid, "//nav/button[contains(., 'Features')]");
+  await find(sid, "//h1[normalize-space()='What this version can do']");
+  await shot(sid, '6-features');
   console.log('PASS data persisted after restart');
 } finally {
   await wd('DELETE', `/session/${sid}`);

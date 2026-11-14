@@ -96,8 +96,11 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
 
   return (
     <section aria-labelledby="add-title">
-      <h1 id="add-title">Add Academic Information</h1>
-      <p className="muted">Paste text, drop files, or type details yourself. Nothing is saved until you review it.</p>
+      <div className="page-head">
+        <span className="chip">capture it</span>
+        <h1 id="add-title">Add Academic Information</h1>
+        <p>Paste text, drop files, or type details yourself. Nothing is saved until you review it.</p>
+      </div>
 
       <div className="card" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
         <label htmlFor="paste" className="label">Paste text (assignment instructions, course timeline, syllabus, announcement, rubric)</label>

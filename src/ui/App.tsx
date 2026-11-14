@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext, localToday, type AppContextValue } from './AppContext';
 import type { AcademicService } from '../core/service';
 import { Home } from './components/Home';
@@ -8,16 +8,30 @@ import { Courses } from './components/Courses';
 import { Features, Sources } from './components/Sources';
 import { useAsync } from './useAsync';
 
-type Tab = 'home' | 'add' | 'review' | 'courses' | 'sources' | 'features';
+export type Tab = 'home' | 'add' | 'review' | 'courses' | 'sources' | 'features';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'home', label: 'Home' },
-  { id: 'add', label: 'Add information' },
-  { id: 'review', label: 'Review' },
-  { id: 'courses', label: 'Courses' },
-  { id: 'sources', label: 'Imported material' },
-  { id: 'features', label: 'Features' },
+/** The four stages of the workflow live in the bottom dock. */
+const DOCK: { id: Tab; label: string; verb: string }[] = [
+  { id: 'add', label: 'Add information', verb: 'capture it' },
+  { id: 'review', label: 'Review', verb: 'confirm it' },
+  { id: 'courses', label: 'Courses', verb: 'plan it' },
+  { id: 'sources', label: 'Imported material', verb: 'trace it' },
 ];
+
+function useClock(): string {
+  const fmt = () => {
+    const d = new Date();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const tz = new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value ?? '';
+    return `${time} ${tz}`;
+  };
+  const [now, setNow] = useState(fmt);
+  useEffect(() => {
+    const t = setInterval(() => setNow(fmt()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
 
 export function App({ service, mode, today }: { service: AcademicService; mode: AppContextValue['mode']; today?: string }) {
   const [tab, setTab] = useState<Tab>('home');
@@ -25,27 +39,53 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
   const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode }), [service, version, refresh, today, mode]);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
+  const clock = useClock();
+
+  const go = (t: Tab) => {
+    setTab(t);
+    window.scrollTo?.({ top: 0 });
+  };
 
   return (
     <AppContext.Provider value={ctx}>
-      <div className="shell">
-        <nav aria-label="Main">
-          <div className="brand">Assignment Rescue AI</div>
-          {TABS.map((t) => (
-            <button key={t.id} type="button" className={tab === t.id ? 'active' : ''} aria-current={tab === t.id ? 'page' : undefined} onClick={() => setTab(t.id)}>
-              {t.label}{t.id === 'review' && pending ? <span className="badge" aria-label={`${pending} pending`}>{pending}</span> : null}
-            </button>
-          ))}
-          {mode === 'browser-preview' && <p className="muted small preview-note">Browser preview: data is kept in this browser only.</p>}
-        </nav>
+      <div className="app">
+        <header className="topbar">
+          <span className="wordmark">Assignment Rescue</span>
+          <nav aria-label="Main">
+            <button type="button" className={tab === 'home' ? 'active' : ''} aria-current={tab === 'home' ? 'page' : undefined} onClick={() => go('home')}>Home</button>
+            <button type="button" className={tab === 'features' ? 'active' : ''} aria-current={tab === 'features' ? 'page' : undefined} onClick={() => go('features')}>Features</button>
+          </nav>
+          {mode === 'browser-preview' && <span className="preview-note">browser preview</span>}
+          <span className="clock" aria-label="Local time">{clock}</span>
+        </header>
+
         <main>
-          {tab === 'home' && <Home goTo={setTab} />}
-          {tab === 'add' && <AddInfo onImported={() => setTab('review')} />}
+          {tab === 'home' && <Home goTo={go} />}
+          {tab === 'add' && <AddInfo onImported={() => go('review')} />}
           {tab === 'review' && <Review />}
           {tab === 'courses' && <Courses />}
           {tab === 'sources' && <Sources />}
           {tab === 'features' && <Features />}
         </main>
+
+        <nav className="dock" aria-label="Workflow">
+          {DOCK.map((d) => {
+            const count = d.id === 'review' && pending ? pending : 0;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                className={tab === d.id ? 'active' : ''}
+                aria-current={tab === d.id ? 'page' : undefined}
+                aria-label={count ? `${d.label}, ${count} pending` : d.label}
+                onClick={() => go(d.id)}
+              >
+                <span>{d.label}{count ? <span className="badge">{count}</span> : null}</span>
+                <span className="verb">{d.verb}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </AppContext.Provider>
   );

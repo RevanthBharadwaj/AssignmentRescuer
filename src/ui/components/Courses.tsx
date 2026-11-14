@@ -25,15 +25,18 @@ export function Courses() {
   const other = records.filter((r) => !['course', 'assignment', 'timeline_event', 'rubric_criterion'].includes(r.entityType));
   const workspace = open ? records.find((r) => r.id === open) : null;
 
-  if (workspace) return <AssignmentWorkspace record={workspace} all={records} onBack={() => setOpen(null)} />;
+  if (workspace) return <AssignmentWorkspace record={workspace} all={records} onBack={() => { setOpen(null); window.scrollTo?.({ top: 0 }); }} />;
 
   return (
     <section aria-labelledby="courses-title">
-      <h1 id="courses-title">Courses and timeline</h1>
+      <div className="page-head">
+        <span className="chip">plan it</span>
+        <h1 id="courses-title">Courses and timeline</h1>
+      </div>
       {records.length === 0 && <p className="muted">No confirmed information yet.</p>}
       {other.map((r) => (
         <div key={r.id} className="card compact">
-          <span className="tag">{ENTITY_LABELS[r.entityType]}</span> <strong>{String(r.fields.name ?? r.fields.doi ?? r.key)}</strong>
+          <span className="tag">{ENTITY_LABELS[r.entityType]}</span> <strong>{String(r.fields.name ?? r.fields.doi ?? (r.entityType === 'semester' ? 'Current semester (name not stated)' : r.key))}</strong>
           {r.entityType === 'semester' && <span className="muted"> · {formatDate(r.fields.startDate as AcademicDate)} to {formatDate(r.fields.endDate as AcademicDate)}</span>}
           {r.entityType === 'academic_break' && <span className="muted"> · {formatDate(r.fields.startDate as AcademicDate)} to {formatDate(r.fields.endDate as AcademicDate)}</span>}
         </div>
@@ -52,7 +55,7 @@ export function Courses() {
                     <td>{formatDate(dateOf(r))}</td>
                     <td>{String(r.fields.title)}{r.fields.unit ? <span className="muted small"> · {String(r.fields.unit)}</span> : null}</td>
                     <td>{String(r.fields.type ?? r.fields.kind ?? '')}</td>
-                    <td>{r.entityType === 'assignment' && <button type="button" className="link" onClick={() => setOpen(r.id)}>Open</button>}</td>
+                    <td>{r.entityType === 'assignment' && <button type="button" className="link" onClick={() => { setOpen(r.id); window.scrollTo?.({ top: 0 }); }}>Open</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -70,8 +73,11 @@ function AssignmentWorkspace({ record, all, onBack }: { record: ConfirmedRecord;
   const shown = Object.entries(record.fields).filter(([k]) => !['instructions', 'title'].includes(k));
   return (
     <section aria-labelledby="ws-title">
-      <button type="button" className="link" onClick={onBack}>← Back to courses</button>
-      <h1 id="ws-title">{String(record.fields.title)}</h1>
+      <button type="button" className="link" onClick={onBack}>← back to courses</button>
+      <div className="page-head">
+        <span className="chip">assignment workspace</span>
+        <h1 id="ws-title">{String(record.fields.title)}</h1>
+      </div>
       <div className="card">
         <h2>Requirements checklist</h2>
         <ul className="checklist">{a.checklist.map((c) => <li key={c.id}><label><input type="checkbox" /> {c.text}</label></li>)}</ul>

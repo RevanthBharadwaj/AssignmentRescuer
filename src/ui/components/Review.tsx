@@ -31,7 +31,10 @@ export function Review() {
 
   return (
     <section aria-labelledby="review-title">
-      <h1 id="review-title">Review extracted information</h1>
+      <div className="page-head">
+        <span className="chip">confirm it</span>
+        <h1 id="review-title">Review extracted information</h1>
+      </div>
       {list.length === 0 ? (
         <p className="muted">Nothing waiting for review.</p>
       ) : (
