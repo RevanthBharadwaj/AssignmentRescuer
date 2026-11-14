@@ -33,4 +33,4 @@ Not yet covered because the features do not exist: screenshot, PDF, DOCX, CSV an
 
 Verified in this build: unit, UI and Rust tests, the production bundle, and the desktop end to end test on Linux (WebKitGTK).
 
-Not yet verified: macOS and Windows. The CI workflow in `.github/workflows/ci.yml` runs every check and builds installers on `macos-latest` and `windows-latest`. Until that workflow has passed on both, macOS and Windows support should be described as expected rather than verified. The WebDriver end to end test runs on Linux only, because Tauri's WebDriver support does not cover macOS; on Windows it needs Edge WebDriver and can be added later.
+Not yet verified: macOS and Windows. The CI workflow in `.github/workflows/ci.yml` runs every check and builds installers on `macos-latest` and `windows-latest` (Linux is no longer part of CI). Until that workflow has passed on both, macOS and Windows support should be described as expected rather than verified. The WebDriver end to end test is run by the developer on Linux only and is not part of CI, because Tauri's WebDriver support does not cover macOS; on Windows it needs Edge WebDriver and can be added later.

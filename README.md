@@ -2,7 +2,7 @@
 
 A local first desktop app for students on macOS and Windows. Paste a syllabus, a Canvas page, an assignment prompt or a rubric, and Assignment Rescue turns it into a confirmed academic timeline where every deadline traces back to the exact line it came from. Nothing is saved until you approve it, and nothing leaves your computer.
 
-Built with Tauri 2, React, TypeScript and SQLite. Builds and tests pass on macOS, Windows and Linux.
+Built with Tauri 2, React, TypeScript and SQLite. Supports macOS and Windows. Linux is not supported; it is used only on the development machine for automated tests.
 
 ![Home screen](docs/screenshots/5-home.png)
 

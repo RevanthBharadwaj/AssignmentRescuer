@@ -69,7 +69,7 @@ git push -u origin main
 
 ## 6. Confirm CI
 
-Open the repository's Actions tab. The `CI` workflow runs type checks, lint, all tests and builds on Linux, macOS and Windows, builds installers on macOS and Windows, and runs the desktop end to end test on Linux. When it passes, macOS and Windows support counts as verified; until then, treat it as expected.
+Open the repository's Actions tab. The `CI` workflow runs type checks, lint, all tests and the production build on macOS and Windows, and builds the installers on both. Linux is not a supported platform. When it passes, macOS and Windows support counts as verified; until then, treat it as expected.
 
 ## Afterwards
 
