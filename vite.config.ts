@@ -7,6 +7,8 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
+  // PDF.js's worker is an ES module.
+  worker: { format: 'es' },
   build: {
     target: 'es2022',
     sourcemap: false,

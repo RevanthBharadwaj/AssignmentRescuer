@@ -9,7 +9,7 @@ import '@fontsource-variable/jetbrains-mono';
 import '@fontsource/noto-serif/300.css';
 import './ui/styles.css';
 import { errorMessage } from './ui/format';
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import pdfWorkerUrl from './pdfWorker?worker&url';
 import { configurePdfWorker } from './core/input/pdf';
 
 // PDF.js parses PDFs in a bundled worker; nothing is fetched from the network.

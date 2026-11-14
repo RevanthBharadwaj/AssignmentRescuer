@@ -1,3 +1,4 @@
+import { installStreamIteration } from './streamPolyfill';
 import { CorruptFileError, NeedsOcrError, type ExtractedText } from './errors';
 
 /**
@@ -17,6 +18,7 @@ export function configurePdfWorker(url: string): void {
 }
 
 async function loadPdfJs(): Promise<PdfJs> {
+  installStreamIteration();
   pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.mjs').then((m) => {
     if (workerSrc) m.GlobalWorkerOptions.workerSrc = workerSrc;
     return m;

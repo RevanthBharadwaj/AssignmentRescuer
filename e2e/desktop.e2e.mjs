@@ -236,6 +236,8 @@ try {
   // Drop a PDF syllabus (PDF.js runs in the app's worker).
   await menu('Add material');
   await kind('Syllabus');
+  // Act like Safari on macOS, which cannot loop over a ReadableStream with for await.
+  await wd('POST', `/session/${sid}/execute/sync`, { script: 'delete ReadableStream.prototype[Symbol.asyncIterator]; delete ReadableStream.prototype.values;', args: [] });
   const pdf = readFileSync(new URL('../tests/fixtures/syllabus.pdf', import.meta.url)).toString('base64');
   await wd('POST', `/session/${sid}/execute/sync`, {
     script: `const bytes = Uint8Array.from(atob(arguments[0]), (c) => c.charCodeAt(0));

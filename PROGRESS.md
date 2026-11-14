@@ -30,7 +30,11 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Announcements and the AI assistant (latest)**
+**Fix: PDF import on macOS (latest)**
+
+Dropping a PDF on the Mac app failed with "undefined is not a function". PDF.js reads page text by looping over a ReadableStream with `for await`, which Safari's engine (used by the macOS app) does not support; the Linux test machine's WebKit does, so the end to end test missed it. The app now adds that loop where it is missing, in the page and in the PDF worker. A unit test and the desktop end to end test both remove the feature before importing a PDF, so this stays covered.
+
+**Announcements and the AI assistant**
 
 1. A pasted announcement no longer turns into separate review items. It only updates assignments you already have (for example a moved due date); mentions of other weeks, modules, the course or the semester are ignored, and anything already saved is skipped without asking.
 2. Optional AI assistant, off by default, set up in Semester setup step 05. A free local model through Ollama (localhost only) or Claude with your API key in the system keychain and explicit consent.
@@ -113,7 +117,7 @@ The interface was rebuilt in a dark studio style: near black background, lime cr
 | Check | Linux | macOS | Windows |
 |---|---|---|---|
 | Type check, lint | ✅ | ✅ | ✅ |
-| 137 Vitest tests | ✅ | ✅ | ✅ |
+| 140 Vitest tests | ✅ | ✅ | ✅ |
 | Rust tests | ✅ | ✅ | ✅ |
 | Production frontend build | ✅ | ✅ | ✅ |
 | Desktop app compiles and launches | ✅ | ✅ | ✅ (compiles; not launched in CI) |
