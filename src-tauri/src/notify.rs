@@ -34,15 +34,14 @@ pub fn build_message(from: &str, to: &str, subject: &str, body: &str) -> Result<
         .map_err(|e| format!("Could not build the email: {e}"))
 }
 
-// Runs off the window thread so the app stays responsive while it waits on the network.
-#[tauri::command(async)]
-pub fn send_email(from: String, to: String, subject: String, body: String) -> Result<(), String> {
-    let to = if to.trim().is_empty() { from.clone() } else { to };
-    let message = build_message(&from, &to, &subject, &body)?;
+/// Send one email through the student's own Gmail account.
+pub fn deliver(from: &str, to: &str, subject: &str, body: &str) -> Result<(), String> {
+    let to = if to.trim().is_empty() { from } else { to };
+    let message = build_message(from, to, subject, body)?;
     let password = crate::ai::secret("gmail", "No Gmail app password saved. Add it in Semester setup → Reminders.")?;
     let mailer = SmtpTransport::relay("smtp.gmail.com")
         .map_err(|e| format!("Could not set up the email connection: {e}"))?
-        .credentials(Credentials::new(clean_address(&from)?, password))
+        .credentials(Credentials::new(clean_address(from)?, password))
         .timeout(Some(Duration::from_secs(30)))
         .build();
     mailer.send(&message).map(|_| ()).map_err(|e| {
@@ -55,6 +54,12 @@ pub fn send_email(from: String, to: String, subject: String, body: String) -> Re
             format!("Gmail could not send the email: {text}")
         }
     })
+}
+
+// Runs off the window thread so the app stays responsive while it waits on the network.
+#[tauri::command(async)]
+pub fn send_email(from: String, to: String, subject: String, body: String) -> Result<(), String> {
+    deliver(&from, &to, &subject, &body)
 }
 
 #[tauri::command]

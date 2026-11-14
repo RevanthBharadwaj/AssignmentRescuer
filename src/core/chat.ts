@@ -18,6 +18,8 @@ export interface ChatMessage extends ChatTurn {
   /** Proposals waiting for approval from a pasted message. */
   proposalIds?: string[];
   kind?: 'intake' | 'ask';
+  /** What an 'ask' message is asking: about an assignment, or about the semester. */
+  ask?: 'assignment' | 'term';
   /** Which model wrote an assistant reply, and for which kind of work. */
   model?: string;
   task?: 'assignment' | 'general';

@@ -21,12 +21,13 @@ import { buildAssignmentContext, toAnnouncement } from './courseContent';
 import { normaliseCourseCode } from './util';
 import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
 import { buildBrief, briefToText, type Brief } from './brief';
-import { prettyDate, prettyTime, milestonesFor, remindersFor, dueReminders, formatDigest, formatEmail, DEFAULT_PUSH, type Email, type Milestone, type PushSettings, type Reminder } from './schedule';
+import { prettyDate, prettyTime, milestonesFor, remindersFor, dueReminders, formatDigest, formatEmail, scheduleEmails, DEFAULT_PUSH, type Email, type Milestone, type PushSettings, type Reminder } from './schedule';
 import { summariseUnits, type UnitSummary } from './units';
 import { parseOverview, syllabusPrompt } from './ai';
 import { chunkText, retrieve } from './retrieve';
 import { modelFor } from './models';
 import { apaText, inText, searchWorks, verifyDoi, type Fetcher, type Work } from './scholar';
+import { termMismatch } from './term';
 import { dueRange, toolInfo, type ToolCall, type ToolId } from './tools';
 import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
 import { sourceKind, sourcesForCourse } from './courseContent';
@@ -342,6 +343,17 @@ export class AcademicService {
    * Add several courses at once (for example a pasted Canvas course list).
    * When no semester is set yet, the list's term becomes the semester name.
    */
+  /** The saved semester's name, or null when none is saved yet. */
+  async semesterName(): Promise<string | null> {
+    const s = (await this.onboarding()).currentSemester;
+    return s?.fields.name ? String(s.fields.name) : null;
+  }
+
+  /** Terms named in the text that are not the saved semester, so the app can ask before trusting it. */
+  async termMismatch(text: string): Promise<{ found: string[]; semester: string } | null> {
+    return termMismatch(text, await this.semesterName());
+  }
+
   async addCourses(list: { code: string; name: string | null; section: string | null; term: string | null; url: string | null }[]) {
     const current = (await this.onboarding()).currentSemester;
     const term = list.find((c) => c.term)?.term ?? null;
@@ -547,6 +559,12 @@ export class AcademicService {
   /** The email for a day's reminders, for a preview and for sending. */
   async emailFor(reminders: Reminder[]): Promise<Email | null> {
     return formatEmail(reminders, await this.courseInfo(), (await this.pushSettings()).name);
+  }
+
+  /** The next weeks of reminder emails, one per day, for the job that runs when the app is closed. */
+  async emailSchedule(today: string, days = 45) {
+    const settings = await this.pushSettings();
+    return scheduleEmails(await this.reminderPlan(), await this.courseInfo(), settings.name, today, days, new Set(Object.keys(await this.sentLog())));
   }
 
   /** What a day's desktop notification would say. */

@@ -163,7 +163,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
     return list;
   };
 
-  const send = async (override?: { prompt: string; shown: string }, decided?: { text: string; task: 'assignment' | 'general' }) => {
+  const send = async (override?: { prompt: string; shown: string }, decided?: { text: string; task?: 'assignment' | 'general'; termOk?: boolean }) => {
     const input = decided ? decided.text : override ? override.prompt : text.trim();
     if (!input || busy !== null) return;
     setError(null);
@@ -174,9 +174,17 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
     try {
       const paste = !override && (decided ? true : looksLikeMaterial(input) && !asQuestion);
       if (paste) {
-        const intent = decided ? decided.task : guessIntent(input, titles);
+        if (!decided?.termOk) {
+          const mismatch = await service.termMismatch(input);
+          if (mismatch) {
+            list = [...list, msg({ role: 'assistant', kind: 'ask', ask: 'term', pending: input, content: `This says ${mismatch.found.join(' and ')}, but your semester is ${mismatch.semester}. Is it for ${mismatch.semester}? I will not save it until you tell me.` })];
+            await push(list);
+            return;
+          }
+        }
+        const intent = decided?.task ?? guessIntent(input, titles);
         if (intent === 'unsure') {
-          list = [...list, msg({ role: 'assistant', kind: 'ask', pending: input, content: 'Is this about an assignment, or something else, like an announcement, the syllabus or general course information? I use a stronger model for assignments.' })];
+          list = [...list, msg({ role: 'assistant', kind: 'ask', ask: 'assignment', pending: input, content: 'Is this about an assignment, or something else, like an announcement, the syllabus or general course information? I use a stronger model for assignments.' })];
           await push(list);
           return;
         }
@@ -189,7 +197,7 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         }
         await intake(list, target, { text: input }, intent);
       } else {
-        const task = override ? 'assignment' : assignmentId ? 'assignment' : decided ? decided : guessIntent(input, titles) === 'assignment' ? 'assignment' : 'general';
+        const task = override ? 'assignment' : assignmentId ? 'assignment' : guessIntent(input, titles) === 'assignment' ? 'assignment' : 'general';
         const used: ToolResult[] = [];
         if (!override) {
           for (const call of pickTools(input, focus ? String(focus.fields.title) : null)) {
@@ -233,6 +241,12 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         const seen = await describeImage(vision, base.ai.ollamaUrl, im.bytes, 'Transcribe all the text in this screenshot exactly as written, keeping headings, due dates, point values and table rows on their own lines. Do not add anything.');
         list = [...list, msg({ role: 'assistant', content: 'I read the image. Here is the text I found:\n\n' + seen.trim(), model: vision, task: 'general' })];
         await push(list);
+        const mismatch = await service.termMismatch(seen);
+        if (mismatch) {
+          list = [...list, msg({ role: 'assistant', kind: 'ask', ask: 'term', pending: seen, content: `The screenshot says ${mismatch.found.join(' and ')}, but your semester is ${mismatch.semester}. Is it for ${mismatch.semester}? I will not save it until you tell me.` })];
+          await push(list);
+          continue;
+        }
         list = await intake(list, code, { text: seen }, guessIntent(seen, titles) === 'assignment' ? 'assignment' : 'general');
       }
     } catch (e) {
@@ -293,10 +307,16 @@ export function Chat({ code: startCode, assignmentId: startAssignment }: { code?
         {messages.map((m) => (
           <div key={m.id} className={`bubble ${m.role} ${m.kind ?? ''}`}>
             <div className="bubble-text">{m.content}</div>
-            {m.kind === 'ask' && m.pending && (
+            {m.kind === 'ask' && m.pending && m.ask === 'term' && (
               <div className="bubble-actions">
-                <button type="button" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'assignment' })}>It is about an assignment</button>
-                <button type="button" className="secondary" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'general' })}>Something else</button>
+                <button type="button" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, termOk: true })}>Yes, it is for my semester</button>
+                <button type="button" className="secondary" disabled={busy !== null} onClick={async () => { await push([...messages.filter((x) => x.id !== m.id), msg({ role: 'assistant', content: 'Okay, I did not save it. If your semester changed, update it in Semester setup first.' })]); }}>No, it is another semester</button>
+              </div>
+            )}
+            {m.kind === 'ask' && m.pending && m.ask !== 'term' && (
+              <div className="bubble-actions">
+                <button type="button" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'assignment', termOk: true })}>It is about an assignment</button>
+                <button type="button" className="secondary" disabled={busy !== null} onClick={() => void send(undefined, { text: m.pending as string, task: 'general', termOk: true })}>Something else</button>
               </div>
             )}
             {m.role === 'assistant' && m.model && <div className="model-caption muted small">{modelLabel(m.model)} · {roleName(m.task ?? 'general')}</div>}

@@ -10,7 +10,7 @@ import { Setup } from './components/Setup';
 import { useAsync } from './useAsync';
 import { Calendar } from './components/Calendar';
 import { Chat } from './components/Chat';
-import { useReminderLoop } from './useReminderLoop';
+import { useBackgroundReminders, useReminderLoop } from './useReminderLoop';
 import { Tour } from './components/Guide';
 import { Toasts, type Toast } from './ux';
 import { Breadcrumbs, type Crumb } from './components/Breadcrumbs';
@@ -74,6 +74,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
   }, [dismiss, refresh]);
   const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go, toast }), [service, version, refresh, today, mode, go, toast]);
   useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast);
+  useBackgroundReminders(service, version, ctx.today, toast);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
   const clock = useClock();
   const [tour, setTour] = useState(false);

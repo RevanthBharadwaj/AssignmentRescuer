@@ -160,3 +160,18 @@ describe('chat whats_due tool', () => {
     expect(next.text).toContain('The next one is');
   });
 });
+
+describe('emails for the closed-app job', () => {
+  it('builds one email per day for the next weeks and leaves out reminders already sent', async () => {
+    const { service } = await course();
+    await service.savePushSettings({ ...(await service.pushSettings()), enabled: true, mail: true, gmail: 'a@gmail.com', name: 'Revanth' });
+    const items = await service.emailSchedule('2026-10-19');
+    expect(items.map((i) => i.id)).toEqual(['mail:2026-10-19', 'mail:2026-10-20', 'mail:2026-10-21', 'mail:2026-10-22', 'mail:2026-10-23', 'mail:2026-10-24']);
+    expect(items[2].subject).toContain('MGT 6200, Dr. Rivera');
+    expect(items[2].body).toContain('Hi Revanth,');
+    const today = await service.dueNow(new Date(2026, 9, 21, 10, 0), '2026-10-21');
+    await service.markReminded(today.reminders, '2026-10-21');
+    expect((await service.emailSchedule('2026-10-21')).map((i) => i.id)).not.toContain('mail:2026-10-21');
+    expect((await service.pushSettings()).background).toBe(true);
+  });
+});

@@ -4,6 +4,7 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ConfirmedRecord } from '../../core/types';
 import { parseCourseList } from '../../core/extract/courseList';
+import { sameTerm, termOrder } from '../../core/term';
 import { dateFromInputs, errorMessage, formatDate } from '../format';
 import { FeedCard } from './FeedCard';
 import { AiSettingsCard } from './AiPanel';
@@ -70,8 +71,16 @@ export function Setup() {
   useEffect(fillFromSaved, [data]);
 
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => { if (!listText.trim()) setSkipped(new Set()); }, [listText]);
-  const parsed = useMemo(() => parseCourseList(listText).filter((c) => !skipped.has(c.code)), [listText, skipped]);
+  useEffect(() => { if (!listText.trim()) { setSkipped(new Set()); setChosenTerm(null); setExtra(new Set()); } }, [listText]);
+  const [chosenTerm, setChosenTerm] = useState<string | null>(null);
+  const [extra, setExtra] = useState<ReadonlySet<string>>(new Set());
+  const listed = useMemo(() => parseCourseList(listText).filter((c) => !skipped.has(c.code)), [listText, skipped]);
+  const terms = useMemo(() => [...new Set(listed.map((c) => c.term).filter((t): t is string => !!t))].sort((a, b) => termOrder(a) - termOrder(b)), [listed]);
+  const savedTerm = data?.onboarding.currentSemester?.fields.name ? String(data.onboarding.currentSemester.fields.name) : null;
+  // The term the student confirmed, or the saved semester when the list matches it. undefined means: ask.
+  const term: string | null | undefined = terms.length === 0 ? null : (chosenTerm && terms.includes(chosenTerm) ? chosenTerm : terms.find((t) => sameTerm(t, savedTerm)) ?? undefined);
+  const otherTerm = (c: { term: string | null }) => !!c.term && term !== null && term !== undefined && c.term !== term;
+  const parsed = useMemo(() => (term === undefined ? [] : listed.filter((c) => !(c.term && term !== null && c.term !== term) || extra.has(c.code))), [listed, term, extra]);
   if (!data) return <p className="muted">Loading…</p>;
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -190,6 +199,20 @@ export function Setup() {
             <h3 className="sub">Paste your course list</h3>
             <p className="muted small">In Canvas, open Courses → All Courses, select the list and copy it. Or type one course per line, like "BUS 610 Strategic Management".</p>
             <textarea aria-label="Course list" rows={5} value={listText} onChange={(e) => setListText(e.target.value)} placeholder="2026FA Strategic Management (BUS-610-7AB12)" />
+            {term === undefined && (
+              <div className="term-ask" role="group" aria-label="Which semester are you in">
+                <p><b>Which semester are you in?</b> Your list is for {terms.join(' and ')}{savedTerm ? `, and your saved semester is ${savedTerm}` : ''}. I do not want to guess, because a list can include future or old courses.</p>
+                <div className="row">
+                  {terms.map((t) => <button key={t} type="button" className="secondary" onClick={() => setChosenTerm(t)}>I am in {t}</button>)}
+                </div>
+              </div>
+            )}
+            {typeof term === 'string' && (
+              <p className="term-note small" role="status">
+                {sameTerm(term, savedTerm) ? `Semester check: this list matches your saved semester, ${term}.` : savedTerm ? `I will change your semester from ${savedTerm} to ${term} when you add these.` : `I will set your semester to ${term} when you add these.`}
+                {listed.some(otherTerm) ? ' Courses from other terms are left out unless you tick them below.' : ''}
+              </p>
+            )}
             {parsed.length > 0 && (
               <ul className="parsed-courses" aria-label="Courses found">
                 {parsed.map((c) => (
@@ -202,7 +225,18 @@ export function Setup() {
                 ))}
               </ul>
             )}
+            {typeof term === 'string' && listed.some(otherTerm) && (
+              <ul className="parsed-courses other-terms" aria-label="Courses from other terms">
+                {listed.filter(otherTerm).map((c) => (
+                  <li key={c.code}>
+                    <label className="inline"><input type="checkbox" checked={extra.has(c.code)} onChange={(e) => setExtra(e.target.checked ? new Set([...extra, c.code]) : new Set([...extra].filter((x) => x !== c.code)))} aria-label={`Add ${c.code} anyway`} /> <strong>{c.code}</strong> {c.name}</label>
+                    <span className="muted small">{c.term}, not added unless ticked</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <button type="button" disabled={parsed.length === 0} onClick={() => run(`${parsed.length} course${parsed.length === 1 ? '' : 's'} added`, async () => {
+              if (typeof term === 'string' && !sameTerm(term, savedTerm)) await service.saveSemester({ name: term, start: null, end: null });
               await service.addCourses(parsed);
               setListText('');
               setSkipped(new Set());

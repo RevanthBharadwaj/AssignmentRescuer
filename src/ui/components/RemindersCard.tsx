@@ -43,7 +43,7 @@ export function RemindersCard() {
           <div><dt>Reminders</dt><dd>On, every day at {HOURS[data.s.hour].label}</dd></div>
           <div><dt>Channels</dt><dd>{[data.s.desktop && 'Desktop notification', data.s.mail && `Email to ${data.s.email || data.s.gmail}`].filter(Boolean).join(' and ')}</dd></div>
         </dl>
-        <p className="muted small">Day before and day of; every day for five days before big work; the first discussion post gets its own reminder. They go out while this app is open.</p>
+        <p className="muted small">Day before and day of; every day for five days before big work; the first discussion post gets its own reminder.{data.s.mail && data.s.background ? ' Emails go out even when this app is closed, as long as your computer is on.' : ' They go out while this app is open.'}</p>
         {preview}
         <button type="button" className="modify" onClick={() => { setDraft(data.s); setEditing(true); }}>Modify</button>
       </>
@@ -110,6 +110,9 @@ export function RemindersCard() {
           <label className="consent"><input type="checkbox" checked={s.desktop} onChange={(e) => set({ desktop: e.target.checked })} /><span>Desktop notification</span></label>
           <label className="consent"><input type="checkbox" checked={s.mail} onChange={(e) => set({ mail: e.target.checked })} /><span>Email, sent from my own Gmail account (free)</span></label>
           {s.mail && (
+            <label className="consent"><input type="checkbox" checked={s.background} onChange={(e) => set({ background: e.target.checked })} /><span>Send emails even when this app is closed. My computer will check every 15 minutes using its own scheduler (launchd on Mac, Task Scheduler on Windows). Turning this off removes it. The computer has to be on.</span></label>
+          )}
+          {s.mail && (
             <>
               <div className="grid">
                 <label>Gmail address to send from<input type="email" value={s.gmail} onChange={(e) => set({ gmail: e.target.value })} placeholder="you@gmail.com" autoComplete="off" spellCheck={false} /></label>
@@ -137,7 +140,7 @@ export function RemindersCard() {
         {editing && <button type="button" className="secondary" onClick={() => { setDraft(null); setEditing(false); setError(null); }}>Cancel</button>}
       </div>
       {error && <p role="alert" className="error">{error}</p>}
-      <p className="muted small">Reminders go out while this app is open on your computer. Your email addresses stay on this computer; the app password is kept in your keychain.</p>
+      <p className="muted small">With the closed-app option on, emails go out even when this app is not open, as long as your computer is on; desktop notifications need the app open. Your email addresses stay on this computer; the app password is kept in your keychain.</p>
     </>
   );
 }

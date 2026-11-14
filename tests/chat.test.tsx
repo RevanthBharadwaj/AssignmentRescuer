@@ -66,6 +66,21 @@ describe('unit blocks and chat', () => {
     expect(await screen.findByText(/Turn on the AI/)).toBeInTheDocument();
   });
 
+  it('asks when pasted material names a different semester and saves nothing until told', async () => {
+    const service = await setup();
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Workflow' })).getByRole('button', { name: /Chat/ }));
+    fireEvent.change(await screen.findByLabelText('Course'), { target: { value: 'DSC 6400' } });
+    const before = (await service.repository.listRecords('assignment')).length;
+    const other = `Spring 2027 Week 1\nReading due Friday, Jan 15, 20 points\n${'Read the chapter carefully and post in the forum. '.repeat(12)}`;
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: other } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/This says Spring 2027, but your semester is Fall 2026/)).toBeInTheDocument();
+    expect((await service.repository.listRecords('assignment')).length).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: 'No, it is another semester' }));
+    expect(await screen.findByText(/I did not save it/)).toBeInTheDocument();
+    expect((await service.repository.listRecords('assignment')).length).toBe(before);
+  });
+
   it('uses the find sources tool from chat, saves the APA reference and lets the chat cite only that', async () => {
     const service = await setup();
     await service.saveAiSettings({ provider: 'ollama', model: 'qwen3:4b', ollamaUrl: 'http://localhost:11434', cloudConsent: false });

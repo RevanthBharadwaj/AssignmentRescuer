@@ -30,7 +30,13 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 15: model downloads, fewer password prompts, remove buttons (latest)**
+**Update 16: reminders when the app is closed, semester check (latest)**
+
+1. Reminder emails go out even when the app is closed. While reminders are on, the app saves the next 45 days of emails (one per day) in its data folder and installs one scheduled job, a launchd agent on macOS or a Task Scheduler task on Windows, that runs the same program with `--send-reminders <file>` every 15 minutes. It sends what is due after the chosen hour, records each send at once so nothing goes twice, and exits with no window. Turning the option off removes the job and the file. The computer must be on. Desktop notifications still need the app open. The open app skips email while the job is active, so nothing is sent twice.
+2. Semester check: a pasted course list now asks "Which semester are you in?" before adding, compares with the saved semester, leaves other terms out unless ticked and changes the saved semester only after the student picks. Pasted text or a screenshot in Chat that names a different term than the saved semester asks first and saves nothing until answered. Word and PDF attachments are not checked yet.
+3. 198 Vitest tests and 18 Rust tests pass. Installing the job, the closed-app send and the real keychain were not tried from the sandbox.
+
+**Update 15: model downloads, fewer password prompts, remove buttons**
 
 1. Model cards redrawn (name and tags on one line). A Download button asks for confirmation, then downloads the model through the local Ollama server with a progress bar, starting `ollama serve` if needed; installed models show Installed. Model names are checked to be plain names, and only addresses on this computer are used.
 2. Keychain: secrets are read once per run and kept in memory, and checking whether a key exists no longer reads the secret, so macOS stops asking for the password again and again. Network commands now run off the window thread.

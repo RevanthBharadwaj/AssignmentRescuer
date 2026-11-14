@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { AcademicService } from '../core/service';
 import { notifyDesktop, sendEmail } from './notifier';
+import { backgroundActive, stopBackground, syncBackground } from './background';
 
 /**
  * Sends due reminders while the app is open. Checks every minute; each
@@ -24,7 +25,8 @@ export function useReminderLoop(service: AcademicService, enabled: boolean, toda
         const batch = reminders.map((r) => r.id).join('|');
         const errors: string[] = [];
         let delivered = false;
-        if (settings.mail && email && settings.gmail) {
+        // When the computer's own job sends the emails, the open app leaves them alone.
+        if (settings.mail && email && settings.gmail && !(settings.background && backgroundActive())) {
           if (done.current.has(`mail:${batch}`)) delivered = true;
           else {
             try {
@@ -62,4 +64,32 @@ export function useReminderLoop(service: AcademicService, enabled: boolean, toda
     const id = setInterval(() => void tick(), 60_000);
     return () => clearInterval(id);
   }, [service, enabled, today, toast]);
+}
+
+/**
+ * Keeps the closed-app reminder job up to date: whenever the data, the settings or the day
+ * change, the next weeks of emails are saved for it. Turning reminders off removes the job.
+ */
+export function useBackgroundReminders(service: AcademicService, version: number, today: string, toast: (t: string) => void) {
+  const lastError = useRef<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        const s = await service.pushSettings();
+        if (!live) return;
+        if (s.enabled && s.mail && s.background && s.gmail) {
+          await syncBackground(s.gmail, s.email, s.hour, await service.emailSchedule(today));
+          lastError.current = null;
+        } else {
+          await stopBackground();
+        }
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        if (live && m !== lastError.current) toast(m);
+        lastError.current = m;
+      }
+    }, 800);
+    return () => { live = false; clearTimeout(t); };
+  }, [service, version, today, toast]);
 }

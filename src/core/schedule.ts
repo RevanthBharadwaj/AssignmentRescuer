@@ -49,11 +49,13 @@ export interface PushSettings {
   /** Send reminder emails. */
   mail: boolean;
   desktop: boolean;
+  /** Also send the emails while this app is closed, through a job the computer runs every 15 minutes. */
+  background: boolean;
   /** Hour of day (0 to 23, local time) when reminders go out. */
   hour: number;
 }
 
-export const DEFAULT_PUSH: PushSettings = { enabled: false, name: '', gmail: '', email: '', mail: false, desktop: true, hour: 9 };
+export const DEFAULT_PUSH: PushSettings = { enabled: false, name: '', gmail: '', email: '', mail: false, desktop: true, background: true, hour: 9 };
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -218,4 +220,22 @@ export function formatEmail(reminders: Reminder[], courses: Record<string, Cours
     ].filter(Boolean).join('\n');
   });
   return { subject, body: `Hi${name.trim() ? ` ${name.trim()}` : ''},\n\n${items.join('\n\n')}\n` };
+}
+
+/** One email per day, as the closed-app job needs it. The id is per day so a day is never sent twice. */
+export interface ScheduledEmail { id: string; sendOn: string; subject: string; body: string }
+
+export function scheduleEmails(plan: Reminder[], courses: Record<string, CourseInfo>, name: string, today: string, days: number, sent: ReadonlySet<string>): ScheduledEmail[] {
+  const last = addDays(today, days);
+  const byDay = new Map<string, Reminder[]>();
+  for (const r of plan) {
+    if (r.sendOn < today || r.sendOn > last || sent.has(r.id)) continue;
+    byDay.set(r.sendOn, [...(byDay.get(r.sendOn) ?? []), r]);
+  }
+  const out: ScheduledEmail[] = [];
+  for (const [day, list] of [...byDay].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const email = formatEmail(list, courses, name);
+    if (email) out.push({ id: `mail:${day}`, sendOn: day, ...email });
+  }
+  return out;
 }

@@ -99,6 +99,40 @@ describe('desktop UI', () => {
     expect(await screen.findByRole('button', { name: 'Open MGT 6200' })).toBeInTheDocument();
   });
 
+  it('asks which semester you are in and leaves out courses from other terms unless ticked', async () => {
+    const service = await setup();
+    await service.saveSemester({ name: 'Fall 2026', start: null, end: null });
+    fireEvent.click(top('Semester setup'));
+    fireEvent.change(await screen.findByLabelText('Course list'), { target: { value: [
+      '2026FA Strategic Management (BUS-610-7AB12)',
+      '2027SP Advanced Ethics (BUS-701A-EX9Y1)',
+      '2027SP AI for Executives (BUS-729A-CX7Z1)',
+    ].join('\n') } });
+    // The list includes the saved semester, so no question, but the other term stays out.
+    expect(await screen.findByText(/matches your saved semester, Fall 2026/)).toBeInTheDocument();
+    const found = screen.getByRole('list', { name: 'Courses found' });
+    expect(within(found).getByText('BUS 610')).toBeInTheDocument();
+    expect(within(found).queryByText('BUS 701A')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add BUS 729A anyway' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 courses' }));
+    expect(await screen.findByText('✓ 2 courses added')).toBeInTheDocument();
+    expect((await service.repository.listRecords('course')).map((c) => c.fields.code).sort()).toEqual(['BUS 610', 'BUS 729A']);
+  });
+
+  it('asks before switching to a term that is not the saved semester', async () => {
+    const service = await setup();
+    await service.saveSemester({ name: 'Fall 2026', start: null, end: null });
+    fireEvent.click(top('Semester setup'));
+    fireEvent.change(await screen.findByLabelText('Course list'), { target: { value: '2027SP Advanced Ethics (BUS-701A-EX9Y1)' } });
+    expect(await screen.findByText(/your saved semester is Fall 2026/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Add \d course/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'I am in Spring 2027' }));
+    expect(screen.getByText(/change your semester from Fall 2026 to Spring 2027/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 course' }));
+    expect(await screen.findByText('✓ 1 course added')).toBeInTheDocument();
+    expect((await service.onboarding()).currentSemester?.fields.name).toBe('Spring 2027');
+  });
+
   it('removes unwanted rows from a pasted course list with the cross button before adding', async () => {
     const service = await setup();
     fireEvent.click(top('Semester setup'));
@@ -107,6 +141,7 @@ describe('desktop UI', () => {
       '2026FA Strategic Management (BUS-610-7AB12)',
       '2026FA Managerial Accounting (ACC-620A-SY01)',
     ].join('\n') } });
+    fireEvent.click(await screen.findByRole('button', { name: 'I am in Fall 2026' }));
     const found = screen.getByRole('list', { name: 'Courses found' });
     expect(within(found).getByText('Applied Practicum', { exact: false })).toBeInTheDocument();
     expect(within(found).queryByText(/Click to add/)).toBeNull();
@@ -127,6 +162,8 @@ describe('desktop UI', () => {
       '* [2026FA Managerial Accounting (ACC-620A-SY01)](https://school.instructure.com/courses/222)',
       'Term: 2026 Fall',
     ].join('\n') } });
+    expect(screen.queryByRole('list', { name: 'Courses found' })).toBeNull(); // asks first
+    fireEvent.click(screen.getByRole('button', { name: 'I am in Fall 2026' }));
     const found = screen.getByRole('list', { name: 'Courses found' });
     expect(within(found).getByText('BUS 610')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add 2 courses' }));
