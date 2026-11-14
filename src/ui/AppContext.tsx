@@ -5,7 +5,8 @@ export type Route =
   | { name: 'home' }
   | { name: 'setup' }
   | { name: 'courses' }
-  | { name: 'course'; code: string; tab?: CourseTab; addKind?: string; forAssignment?: string }
+  | { name: 'course'; code: string; tab?: CourseTab; addKind?: string; forAssignment?: string; unit?: number }
+  | { name: 'chat'; code?: string; assignmentId?: string }
   | { name: 'assignment'; id: string; section?: AssignmentSection }
   | { name: 'review' }
   | { name: 'sources' }
@@ -13,7 +14,7 @@ export type Route =
   | { name: 'add' }
   | { name: 'calendar'; month?: string };
 
-export type AssignmentSection = 'overview' | 'instructions' | 'rubric' | 'context' | 'title';
+export type AssignmentSection = 'overview' | 'brief' | 'instructions' | 'rubric' | 'context' | 'title';
 
 export type CourseTab = 'home' | 'announcements' | 'syllabus' | 'modules' | 'assignments' | 'policies' | 'files' | 'add';
 

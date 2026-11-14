@@ -37,7 +37,8 @@ export function Calendar() {
   const { data } = useAsync(async () => {
     const records = await service.repository.listRecords();
     const sem = (await service.onboarding()).currentSemester;
-    return { records, sem };
+    const milestones = (await service.milestones()).filter((m) => m.kind === 'initial_post');
+    return { records, sem, milestones };
   }, [version]);
 
   const byDay = useMemo(() => {
@@ -49,6 +50,16 @@ export function Calendar() {
       if (!d?.iso) continue;
       if (hidden.has(String(r.fields.courseCode ?? ''))) continue;
       map.set(d.iso, [...(map.get(d.iso) ?? []), r]);
+    }
+    // The first post of a discussion is due earlier than its replies (for example Wednesday, not Saturday).
+    for (const m of data?.milestones ?? []) {
+      if (hidden.has(m.courseCode)) continue;
+      const [year, month, day] = m.date.split('-').map(Number);
+      const rec: ConfirmedRecord = {
+        id: `milestone:${m.key}`, entityType: 'timeline_event', key: m.key, unknownFields: [], evidence: [], confirmedAt: '', updatedAt: '',
+        fields: { title: `First post: ${m.title.replace(/^Unit \d+:\s*/i, '')}`, courseCode: m.courseCode, kind: 'milestone', date: { iso: m.date, year, month, day, yearSource: 'explicit', time: m.time, timeZone: m.timeZone, raw: m.date } },
+      };
+      map.set(m.date, [...(map.get(m.date) ?? []), rec]);
     }
     for (const list of map.values()) list.sort((a, b) => String(a.fields.title).localeCompare(String(b.fields.title), undefined, { numeric: true }));
     return map;

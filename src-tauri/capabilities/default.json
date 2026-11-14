@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window: core window APIs and the app's own local database commands. No HTTP, shell or filesystem plugins are enabled.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "notification:default"]
 }

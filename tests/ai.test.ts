@@ -56,7 +56,7 @@ describe('AI briefings', () => {
     const { service, ann } = await setup();
     await expect(service.analyzeAnnouncement(ann.id, fake(answer))).rejects.toThrow(/Turn on the AI assistant/);
     await service.saveAiSettings({ provider: 'anthropic', model: 'claude-haiku-5-5', ollamaUrl: 'http://localhost:11434', cloudConsent: false });
-    await expect(service.analyzeAnnouncement(ann.id, fake(answer))).rejects.toThrow(/Agree to send material to Anthropic/);
+    await expect(service.analyzeAnnouncement(ann.id, fake(answer))).rejects.toThrow(/Agree to send material to Claude/);
   });
 
   it('saves an announcement briefing and shows it on the assignments it mentions', async () => {

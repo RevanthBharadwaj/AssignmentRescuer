@@ -541,7 +541,8 @@ export function extractEntities(
     assignments.splice(0, assignments.length, records[records.length - 1]);
     for (const r of records) if (r.entityType === 'rubric_criterion') { r.fields.assignmentKey = forKey; r.fields.courseCode = forKey.split('|')[0]; }
   }
-  const isInstructions = !!forKey || hasLabel(classifications, 'assignment_instructions') || hasLabel(classifications, 'project_requirements') || hasLabel(classifications, 'discussion_question');
+  // A syllabus is a document about many items, never one assignment's instructions.
+  const isInstructions = source.hints.material !== 'syllabus' && (!!forKey || hasLabel(classifications, 'assignment_instructions') || hasLabel(classifications, 'project_requirements') || hasLabel(classifications, 'discussion_question'));
   if (isInstructions && assignments.length <= 1 && lines.length <= 120) {
     const details = documentAssignmentDetails(text, lines);
     let target = assignments[0];

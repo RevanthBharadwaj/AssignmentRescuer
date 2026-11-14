@@ -6,6 +6,7 @@ import { parseCourseList } from '../../core/extract/courseList';
 import { dateFromInputs, errorMessage, formatDate } from '../format';
 import { FeedCard } from './FeedCard';
 import { AiSettingsCard } from './AiPanel';
+import { RemindersCard } from './RemindersCard';
 
 /**
  * Semester setup. Saved sections are shown read-only with a Modify button;
@@ -234,6 +235,15 @@ export function Setup() {
           <div>
             <h2>AI assistant <span className="muted small">optional</span></h2>
             <AiSettingsCard />
+          </div>
+        </li>
+
+        {/* 06 reminders */}
+        <li className="card">
+          <span className="n">06</span>
+          <div>
+            <h2>Reminders <span className="muted small">optional</span></h2>
+            <RemindersCard />
           </div>
         </li>
       </ol>

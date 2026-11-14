@@ -6,12 +6,14 @@
 mod db;
 mod feed;
 mod ai;
+mod notify;
 
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -19,7 +21,7 @@ pub fn run() {
             app.manage(database);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db::db_batch, db::db_select, feed::fetch_calendar_feed, ai::ai_complete, ai::ai_set_key, ai::ai_has_key])
+        .invoke_handler(tauri::generate_handler![db::db_batch, db::db_select, feed::fetch_calendar_feed, ai::ai_complete, ai::ai_set_key, ai::ai_has_key, notify::send_sms, notify::notify_desktop])
         .run(tauri::generate_context!())
         .expect("error while running Assignment Rescue AI");
 }

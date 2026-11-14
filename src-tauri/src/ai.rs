@@ -1,28 +1,43 @@
-//! AI requests. Two providers:
+//! AI requests. Three providers:
 //! - Ollama on this computer (http://localhost only): nothing leaves the machine.
-//! - Anthropic's API: the key lives in the OS keychain (macOS Keychain,
-//!   Windows Credential Manager), never in the database or the web view.
+//! - Anthropic's API and OpenAI's API: keys live in the OS keychain (macOS
+//!   Keychain, Windows Credential Manager), never in the database or the web view.
 //! The front end only calls these after the student has turned AI on, and
-//! for Anthropic only after they agreed to send material.
+//! for the cloud providers only after they agreed to send material.
 
 use serde_json::{json, Value};
 use std::time::Duration;
 
 const SERVICE: &str = "ai.assignmentrescue.desktop";
-const ACCOUNT: &str = "anthropic-api-key";
 
-fn entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| format!("Keychain unavailable: {e}"))
+fn account(provider: &str) -> Result<&'static str, String> {
+    match provider {
+        "anthropic" => Ok("anthropic-api-key"),
+        "openai" => Ok("openai-api-key"),
+        "twilio" => Ok("twilio-auth-token"),
+        _ => Err("Unknown key type.".into()),
+    }
+}
+
+pub fn entry(provider: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(SERVICE, account(provider)?).map_err(|e| format!("Keychain unavailable: {e}"))
+}
+
+fn check_key(provider: &str, k: &str) -> Result<(), String> {
+    match provider {
+        "anthropic" if !k.starts_with("sk-ant-") => Err("That does not look like an Anthropic API key (it should start with sk-ant-).".into()),
+        "openai" if !k.starts_with("sk-") || k.starts_with("sk-ant-") => Err("That does not look like an OpenAI API key (it should start with sk-).".into()),
+        "twilio" if k.len() < 20 => Err("That does not look like a Twilio auth token.".into()),
+        _ => Ok(()),
+    }
 }
 
 #[tauri::command]
-pub fn ai_set_key(key: Option<String>) -> Result<(), String> {
-    let e = entry()?;
+pub fn ai_set_key(provider: String, key: Option<String>) -> Result<(), String> {
+    let e = entry(&provider)?;
     match key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
         Some(k) => {
-            if !k.starts_with("sk-ant-") {
-                return Err("That does not look like an Anthropic API key (it should start with sk-ant-).".into());
-            }
+            check_key(&provider, &k)?;
             e.set_password(&k).map_err(|e| format!("Could not save the key: {e}"))
         }
         None => match e.delete_credential() {
@@ -33,8 +48,8 @@ pub fn ai_set_key(key: Option<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn ai_has_key() -> bool {
-    entry().and_then(|e| e.get_password().map_err(|e| e.to_string())).is_ok()
+pub fn ai_has_key(provider: String) -> bool {
+    entry(&provider).and_then(|e| e.get_password().map_err(|e| e.to_string())).is_ok()
 }
 
 pub fn validate_local_url(url: &str) -> Result<String, String> {
@@ -68,21 +83,47 @@ fn http_error(e: ureq::Error, who: &str) -> String {
     }
 }
 
+#[derive(serde::Deserialize)]
+pub struct Turn {
+    role: String,
+    content: String,
+}
+
+/// Earlier turns first, then the new prompt as the last user message.
+fn conversation(history: &Option<Vec<Turn>>, prompt: &str) -> Vec<Value> {
+    let mut v: Vec<Value> = history.iter().flatten()
+        .filter(|t| (t.role == "user" || t.role == "assistant") && !t.content.is_empty())
+        .map(|t| json!({ "role": t.role, "content": t.content }))
+        .collect();
+    v.push(json!({ "role": "user", "content": prompt }));
+    v
+}
+
 #[tauri::command]
-pub fn ai_complete(provider: String, model: String, system: String, prompt: String, base_url: Option<String>) -> Result<String, String> {
-    if prompt.len() > 200_000 {
-        return Err("The material is too long to analyze in one go.".into());
+pub fn ai_complete(
+    provider: String,
+    model: String,
+    system: String,
+    prompt: String,
+    base_url: Option<String>,
+    history: Option<Vec<Turn>>,
+    json_mode: Option<bool>,
+) -> Result<String, String> {
+    let total = prompt.len() + system.len() + history.iter().flatten().map(|t| t.content.len()).sum::<usize>();
+    if total > 400_000 {
+        return Err("The material is too long to send in one go.".into());
     }
+    let json_mode = json_mode.unwrap_or(true);
     match provider.as_str() {
         "anthropic" => {
-            let key = entry()?.get_password().map_err(|_| "No Anthropic API key saved. Add it in Semester setup → AI assistant.".to_string())?;
+            let key = entry("anthropic")?.get_password().map_err(|_| "No Anthropic API key saved. Add it in Semester setup → AI assistant.".to_string())?;
             let body = json!({
                 "model": model,
-                "max_tokens": 2000,
+                "max_tokens": 4000,
                 "system": system,
-                "messages": [{ "role": "user", "content": prompt }],
+                "messages": conversation(&history, &prompt),
             });
-            let resp: Value = agent(90)
+            let resp: Value = agent(120)
                 .post("https://api.anthropic.com/v1/messages")
                 .set("x-api-key", &key)
                 .set("anthropic-version", "2023-06-01")
@@ -95,14 +136,32 @@ pub fn ai_complete(provider: String, model: String, system: String, prompt: Stri
             }).unwrap_or_default();
             if text.is_empty() { Err("Anthropic returned no text.".into()) } else { Ok(text) }
         }
+        "openai" => {
+            let key = entry("openai")?.get_password().map_err(|_| "No OpenAI API key saved. Add it in Semester setup → AI assistant.".to_string())?;
+            let mut messages = vec![json!({ "role": "system", "content": system })];
+            messages.extend(conversation(&history, &prompt));
+            let mut body = json!({ "model": model, "max_completion_tokens": 4000, "messages": messages });
+            if json_mode {
+                body["response_format"] = json!({ "type": "json_object" });
+            }
+            let resp: Value = agent(120)
+                .post("https://api.openai.com/v1/chat/completions")
+                .set("authorization", &format!("Bearer {key}"))
+                .send_json(body)
+                .map_err(|e| http_error(e, "OpenAI"))?
+                .into_json()
+                .map_err(|_| "Unexpected answer from OpenAI.".to_string())?;
+            resp["choices"][0]["message"]["content"].as_str().filter(|t| !t.is_empty()).map(String::from)
+                .ok_or_else(|| "OpenAI returned no text.".into())
+        }
         "ollama" => {
             let base = validate_local_url(base_url.as_deref().unwrap_or("http://localhost:11434"))?;
-            let body = json!({
-                "model": model,
-                "stream": false,
-                "format": "json",
-                "messages": [{ "role": "system", "content": system }, { "role": "user", "content": prompt }],
-            });
+            let mut messages = vec![json!({ "role": "system", "content": system })];
+            messages.extend(conversation(&history, &prompt));
+            let mut body = json!({ "model": model, "stream": false, "messages": messages });
+            if json_mode {
+                body["format"] = json!("json");
+            }
             let resp: Value = agent(300)
                 .post(&format!("{base}/api/chat"))
                 .send_json(body)
@@ -117,7 +176,7 @@ pub fn ai_complete(provider: String, model: String, system: String, prompt: Stri
 
 #[cfg(test)]
 mod tests {
-    use super::validate_local_url;
+    use super::{check_key, conversation, validate_local_url, Turn};
 
     #[test]
     fn local_models_must_be_on_this_computer() {
@@ -126,5 +185,27 @@ mod tests {
         assert!(validate_local_url("https://example.com:11434").is_err());
         assert!(validate_local_url("http://localhost.evil.com:11434").is_err());
         assert!(validate_local_url("http://user@localhost:11434").is_err());
+    }
+
+    #[test]
+    fn keys_are_checked_by_provider() {
+        assert!(check_key("anthropic", "sk-ant-abc").is_ok());
+        assert!(check_key("anthropic", "sk-abc").is_err());
+        assert!(check_key("openai", "sk-proj-abc").is_ok());
+        assert!(check_key("openai", "sk-ant-abc").is_err());
+        assert!(check_key("twilio", "short").is_err());
+    }
+
+    #[test]
+    fn history_comes_before_the_new_prompt() {
+        let h = Some(vec![
+            Turn { role: "user".into(), content: "hi".into() },
+            Turn { role: "system".into(), content: "ignored".into() },
+            Turn { role: "assistant".into(), content: "hello".into() },
+        ]);
+        let m = conversation(&h, "next");
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[2]["content"], "next");
+        assert_eq!(m[1]["role"], "assistant");
     }
 }

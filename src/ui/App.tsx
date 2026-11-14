@@ -9,6 +9,8 @@ import { Features, Sources } from './components/Sources';
 import { Setup } from './components/Setup';
 import { useAsync } from './useAsync';
 import { Calendar } from './components/Calendar';
+import { Chat } from './components/Chat';
+import { useReminderLoop } from './useReminderLoop';
 import { Toasts, type Toast } from './ux';
 import { Breadcrumbs, type Crumb } from './components/Breadcrumbs';
 
@@ -19,11 +21,12 @@ const DOCK: { route: Route['name']; label: string; verb: string }[] = [
   { route: 'courses', label: 'Courses', verb: 'plan it' },
   { route: 'review', label: 'Review', verb: 'confirm it' },
   { route: 'sources', label: 'Imported material', verb: 'trace it' },
+  { route: 'chat', label: 'Chat', verb: 'ask it' },
 ];
 
 const AREA: Record<Route['name'], Route['name']> = {
   home: 'home', setup: 'home', add: 'home', courses: 'courses', course: 'courses', assignment: 'courses',
-  review: 'review', sources: 'sources', features: 'features', calendar: 'calendar',
+  review: 'review', sources: 'sources', features: 'features', calendar: 'calendar', chat: 'chat',
 };
 
 /** Breadcrumbs for pages outside a course (course pages draw their own). */
@@ -69,6 +72,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
     setTimeout(() => dismiss(id), 6000);
   }, [dismiss, refresh]);
   const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go, toast }), [service, version, refresh, today, mode, go, toast]);
+  useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
   const clock = useClock();
   const area = AREA[route.name];
@@ -93,12 +97,13 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           {route.name === 'setup' && <Setup />}
           {route.name === 'add' && <AddInfo onImported={() => go({ name: 'review' })} />}
           {route.name === 'courses' && <CourseList />}
-          {route.name === 'course' && <CoursePage code={route.code} tab={route.tab} addKind={route.addKind} forAssignment={route.forAssignment} />}
+          {route.name === 'course' && <CoursePage code={route.code} tab={route.tab} addKind={route.addKind} forAssignment={route.forAssignment} unit={route.unit} />}
           {route.name === 'assignment' && <AssignmentWorkspace id={route.id} section={route.section} />}
           {route.name === 'review' && <Review />}
           {route.name === 'sources' && <Sources />}
           {route.name === 'features' && <Features />}
           {route.name === 'calendar' && <Calendar />}
+          {route.name === 'chat' && <Chat code={route.code} assignmentId={route.assignmentId} />}
         </main>
         <Toasts items={toasts} dismiss={dismiss} />
 
@@ -109,7 +114,7 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
               <button
                 key={d.route}
                 type="button"
-                className={area === d.route ? 'active' : ''}
+                className={`${area === d.route ? 'active' : ''} ${d.route === 'chat' ? 'dock-chat' : ''}`.trim()}
                 aria-current={area === d.route ? 'page' : undefined}
                 aria-label={count ? `${d.label}, ${count} pending` : d.label}
                 onClick={() => go({ name: d.route } as Route)}

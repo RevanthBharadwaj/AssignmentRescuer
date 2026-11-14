@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp, type AssignmentSection, type CourseTab } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ChangeProposal, ConfirmedRecord } from '../../core/types';
@@ -14,6 +14,8 @@ import { ReviewList } from './ReviewList';
 import { TitlePage } from './TitlePage';
 import { readFileBytes } from './AddInfo';
 import { Breadcrumbs } from './Breadcrumbs';
+import { UnitBlocks } from './UnitBlocks';
+import { BriefView } from './BriefView';
 import { AiButton, AiNote, runAnnouncement, runAssignment } from './AiPanel';
 import { aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
@@ -197,7 +199,7 @@ function Empty({ d, kind, text }: { d: CourseData; kind?: MaterialKind; text: st
 
 /* ================= course page router ================= */
 
-export function CoursePage({ code, tab = 'home', addKind, forAssignment }: { code: string; tab?: CourseTab; addKind?: string; forAssignment?: string }) {
+export function CoursePage({ code, tab = 'home', addKind, forAssignment, unit }: { code: string; tab?: CourseTab; addKind?: string; forAssignment?: string; unit?: number }) {
   const d = useCourse(code);
   if (!d) return <p className="muted">Loading…</p>;
   return (
@@ -205,7 +207,7 @@ export function CoursePage({ code, tab = 'home', addKind, forAssignment }: { cod
       {tab === 'home' && <CourseHome d={d} />}
       {tab === 'announcements' && <Announcements d={d} />}
       {tab === 'syllabus' && <Syllabus d={d} />}
-      {tab === 'modules' && <Modules d={d} />}
+      {tab === 'modules' && <Modules d={d} focus={unit} />}
       {tab === 'assignments' && <Assignments d={d} />}
       {tab === 'policies' && <Policies d={d} />}
       {tab === 'files' && <Files d={d} />}
@@ -239,6 +241,8 @@ function CourseHome({ d }: { d: CourseData }) {
           <span className="muted small">{prog.pct}% of points submitted · {graded.filter((a) => statusOf(a) === 'submitted').length} of {graded.length} done</span>
         </div>
       )}
+
+      <UnitBlocks code={d.code} />
 
       {graded.length === 0 && (
         <Empty d={d} kind="modules" text="This course is empty. Start with the Canvas Modules page (select all, copy, paste), then add the syllabus and announcements." />
@@ -377,8 +381,13 @@ function Syllabus({ d }: { d: CourseData }) {
 
 /* ================= modules ================= */
 
-function Modules({ d }: { d: CourseData }) {
+function Modules({ d, focus }: { d: CourseData; focus?: number }) {
   const { go } = useApp();
+  useEffect(() => {
+    if (focus === undefined) return;
+    const el = document.getElementById(`unit-${focus}`);
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
+  }, [focus]);
   const items = d.mine.filter((r) => (r.entityType === 'assignment' || r.entityType === 'course_material' || r.entityType === 'timeline_event') && r.fields.kind !== 'module');
   const units = new Map<string, ConfirmedRecord[]>();
   for (const r of items) {
@@ -392,7 +401,7 @@ function Modules({ d }: { d: CourseData }) {
     <>
       <PageHead d={d} title="Modules" sub="Your course week by week, the way Canvas lists it: readings and lectures first, then graded work." />
       {ordered.length === 0 ? <Empty d={d} kind="modules" text="No modules yet. In Canvas open Modules, select all, copy, and paste it here." /> : ordered.map(([unit, list], i) => (
-        <details key={unit} className="card module stagger" style={{ ['--i' as string]: i }} open>
+        <details key={unit} id={`unit-${unitNum(unit) === 999 ? 0 : unitNum(unit)}`} className={`card module stagger ${focus !== undefined && (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus ? 'focused' : ''}`} style={{ ['--i' as string]: i }} open={focus === undefined || (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus}>
           <summary><h2>{unit}</h2><span className="muted small">{list.filter((r) => r.entityType === 'assignment').length} graded · {list.filter((r) => r.entityType === 'course_material' && r.fields.kind !== 'note').length} readings and files</span></summary>
           <ul className="module-items">
             {[...list].sort((a, b) => order(a) - order(b) || byDue(a, b)).map((r) => (
@@ -698,6 +707,7 @@ function AddToCourse({ d, initialKind, forAssignment }: { d: CourseData; initial
 
 const A_SECTIONS: { id: AssignmentSection; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'brief', label: 'Brief' },
   { id: 'instructions', label: 'Instructions' },
   { id: 'rubric', label: 'Rubric' },
   { id: 'context', label: 'Course context' },
@@ -806,6 +816,8 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
           </div>
         </>
       )}
+
+      {section === 'brief' && <BriefView id={record.id} />}
 
       {section === 'instructions' && (
         <>

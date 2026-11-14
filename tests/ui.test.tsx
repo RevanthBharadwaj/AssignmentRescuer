@@ -20,9 +20,10 @@ vi.mock('../src/ui/aiClient', () => ({
       cautions: ['Reply to two classmates by Sunday'],
     });
   },
-  hasAnthropicKey: async () => false,
-  setAnthropicKey: async () => undefined,
+  hasSecret: async () => false,
+  setSecret: async () => undefined,
 }));
+vi.mock('../src/ui/notifier', () => ({ sendSms: async () => undefined, notifyDesktop: async () => undefined }));
 import { approveAll, fixture, fixtureBytes, makeService } from './helpers';
 
 afterEach(cleanup);

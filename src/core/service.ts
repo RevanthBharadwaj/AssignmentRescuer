@@ -16,9 +16,16 @@ import {
 } from './reminders/deadlineReminders';
 import type { Resolution } from './merge/merge';
 import type { EntityType, FieldValue, Provenance } from './types';
-import { DEFAULT_AI, aiReady, announcementPrompt, assignmentPrompt, parseBriefing, type AiSettings, type Completer } from './ai';
+import { DEFAULT_AI, PROVIDER_NAME, aiReady, isCloud, announcementPrompt, assignmentPrompt, parseBriefing, type AiSettings, type Completer } from './ai';
 import { buildAssignmentContext, toAnnouncement } from './courseContent';
 import { normaliseCourseCode } from './util';
+import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
+import { buildBrief, briefToText, type Brief } from './brief';
+import { milestonesFor, remindersFor, dueReminders, formatDigest, DEFAULT_PUSH, type Milestone, type PushSettings, type Reminder } from './schedule';
+import { summariseUnits, type UnitSummary } from './units';
+import { chatSystem, describeIntake, findCourse, type ChatMessage } from './chat';
+import { sourceKind, sourcesForCourse } from './courseContent';
+import { addDays } from './extract/dates';
 
 export interface SemesterInput {
   name: string;
@@ -124,8 +131,8 @@ export class AcademicService {
   private async runAi(complete: Completer, req: { system: string; prompt: string }): Promise<{ text: string; settings: AiSettings }> {
     const s = await this.aiSettings();
     if (!aiReady(s)) {
-      throw new Error(s.provider === 'anthropic' && !s.cloudConsent
-        ? 'Agree to send material to Anthropic in Semester setup → AI assistant first.'
+      throw new Error(isCloud(s.provider) && !s.cloudConsent
+        ? `Agree to send material to ${PROVIDER_NAME[s.provider]} in Semester setup → AI assistant first.`
         : 'Turn on the AI assistant in Semester setup first.');
     }
     const text = await complete({ provider: s.provider, model: s.model, system: req.system, prompt: req.prompt, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
@@ -411,5 +418,182 @@ export class AcademicService {
         return d !== null && d >= today && d <= limit;
       })
       .sort((a, b) => (dateOf(a) as string).localeCompare(dateOf(b) as string) || String(a.fields.title ?? '').localeCompare(String(b.fields.title ?? ''), undefined, { numeric: true }));
+  }
+
+  // ---------- syllabus facts, briefs, units ----------
+
+  /** The syllabus text and the facts read from it, for one course. */
+  async syllabusFor(code: string): Promise<{ text: string | null; facts: SyllabusFacts | null }> {
+    const records = await this.repo.listRecords();
+    const sources = sourcesForCourse(code, await this.repo.listSources(), records).filter((x) => sourceKind(x) === 'syllabus');
+    if (!sources.length) return { text: null, facts: null };
+    const text = [...sources].sort((a, b) => b.text.length - a.text.length)[0].text;
+    return { text, facts: parseSyllabus(text) };
+  }
+
+  private async factsByCourse(records: ConfirmedRecord[]): Promise<{ facts: Record<string, SyllabusFacts | undefined>; texts: Record<string, string | undefined> }> {
+    const facts: Record<string, SyllabusFacts | undefined> = {};
+    const texts: Record<string, string | undefined> = {};
+    for (const c of records.filter((r) => r.entityType === 'course')) {
+      const code = String(c.fields.code);
+      const s = await this.syllabusFor(code);
+      if (s.facts) { facts[code] = s.facts; texts[code] = s.text ?? undefined; }
+    }
+    return { facts, texts };
+  }
+
+  async milestones(): Promise<Milestone[]> {
+    const records = await this.repo.listRecords();
+    return milestonesFor(records, (await this.factsByCourse(records)).facts);
+  }
+
+  async briefFor(recordId: string): Promise<Brief | null> {
+    const records = await this.repo.listRecords();
+    const rec = records.find((r) => r.id === recordId);
+    if (!rec) return null;
+    const code = String(rec.fields.courseCode ?? '');
+    const { text, facts } = await this.syllabusFor(code);
+    const sources = sourcesForCourse(code, await this.repo.listSources(), records);
+    const ms = milestonesFor(records, facts ? { [code]: facts } : {});
+    return buildBrief(rec, records, sources, facts, text, ms);
+  }
+
+  async units(code: string, today: string): Promise<UnitSummary[]> {
+    return summariseUnits((await this.repo.listRecords()).filter((r) => r.fields.courseCode === code), today);
+  }
+
+  // ---------- reminders by text and desktop notification ----------
+
+  async pushSettings(): Promise<PushSettings> {
+    return { ...DEFAULT_PUSH, ...(await this.repo.getSetting<Partial<PushSettings>>('push', {})) };
+  }
+
+  async savePushSettings(s: PushSettings): Promise<void> {
+    await this.repo.setSetting('push', s);
+  }
+
+  private async sentLog(): Promise<Record<string, string>> {
+    return this.repo.getSetting<Record<string, string>>('push.sent', {});
+  }
+
+  async reminderPlan(): Promise<Reminder[]> {
+    return remindersFor(await this.milestones());
+  }
+
+  /** What a day's text would say, for a preview and for sending. */
+  async messagesFor(reminders: Reminder[]): Promise<string[]> {
+    const records = await this.repo.listRecords();
+    const { texts } = await this.factsByCourse(records);
+    const courses: Record<string, { name: string | null; instructor: string | null }> = {};
+    for (const c of records.filter((r) => r.entityType === 'course')) {
+      courses[String(c.fields.code)] = { name: c.fields.name ? String(c.fields.name) : null, instructor: c.fields.instructor ? String(c.fields.instructor) : null };
+    }
+    return formatDigest(reminders, courses, (m) => {
+      const t = texts[m.courseCode];
+      const n = /(\d+)/.exec(m.unit ?? '')?.[1];
+      const section = t && n ? unitText(t, Number(n)) : null;
+      const item = section ? matchUnitItem(m.title, unitItems(section)) : null;
+      return item?.prompt ?? null;
+    });
+  }
+
+  /** Reminders that are due now and have not gone out yet. */
+  async dueNow(now: Date, today: string): Promise<{ reminders: Reminder[]; messages: string[]; settings: PushSettings }> {
+    const settings = await this.pushSettings();
+    if (!settings.enabled) return { reminders: [], messages: [], settings };
+    const sent = await this.sentLog();
+    const due = dueReminders(await this.reminderPlan(), now, today, settings.hour, new Set(Object.keys(sent)));
+    return { reminders: due, messages: due.length ? await this.messagesFor(due) : [], settings };
+  }
+
+  async markReminded(reminders: Reminder[], today: string): Promise<void> {
+    const sent = await this.sentLog();
+    const keep: Record<string, string> = {};
+    const cutoff = addDays(today, -45);
+    for (const [k, v] of Object.entries(sent)) if (v >= cutoff) keep[k] = v;
+    for (const r of reminders) keep[r.id] = r.sendOn;
+    await this.repo.setSetting('push.sent', keep);
+  }
+
+  // ---------- chat ----------
+
+  /** Keep a chat answer with the assignment it is for. */
+  async saveDraft(assignmentId: string, text: string, now = new Date().toISOString()): Promise<ConfirmedRecord> {
+    const a = (await this.repo.listRecords('assignment')).find((r) => r.id === assignmentId);
+    if (!a) throw new Error('That assignment no longer exists.');
+    const s = await this.aiSettings();
+    const stamp = now.replace(/\D/g, '').slice(0, 14);
+    return this.repo.saveGenerated({
+      entityType: 'ai_note',
+      key: `${String(a.fields.courseCode)}|ai|draft|${a.key}|${stamp}`,
+      fields: {
+        kind: 'draft', title: `Draft for ${String(a.fields.title)}`, courseCode: String(a.fields.courseCode ?? ''), sourceId: null,
+        summary: text, actions: [], cautions: [], assignmentKeys: [a.key], provider: s.provider, model: s.model, createdAt: now,
+      },
+      unknownFields: [],
+      evidence: [this.aiProvenance(a.evidence[0]?.sourceId ?? 'none', String(a.fields.title), s, now)],
+    }, now);
+  }
+
+
+  async chatHistory(key: string): Promise<ChatMessage[]> {
+    return this.repo.getSetting<ChatMessage[]>(`chat:${key}`, []);
+  }
+
+  async saveChatHistory(key: string, messages: ChatMessage[]): Promise<void> {
+    await this.repo.setSetting(`chat:${key}`, messages.slice(-60));
+  }
+
+  async clearChat(key: string): Promise<void> {
+    await this.repo.setSetting(`chat:${key}`, []);
+  }
+
+  /** Course codes this pasted text names, or the chosen course. */
+  async courseFor(text: string, chosen: string | null): Promise<string | null> {
+    const codes = (await this.repo.listRecords('course')).map((c) => String(c.fields.code));
+    return findCourse(text, codes) ?? chosen ?? (codes.length === 1 ? codes[0] : null);
+  }
+
+  /** Sort pasted material into its course, once, and say what happened. */
+  async chatIntake(code: string, text: string): Promise<{ reply: string; proposalIds: string[]; announcementIds: string[] }> {
+    const r = await this.importForCourse(code, [{ kind: 'text', text, label: `Chat paste (${code})` }]);
+    const reply = describeIntake(r, code, r.skippedDuplicates);
+    const announcementIds = r.sources
+      .filter((s) => sourceKind({ ...s.source, classifications: s.classifications }) === 'announcement')
+      .map((s) => s.source.id);
+    return { reply, proposalIds: r.proposals.map((p) => p.id), announcementIds };
+  }
+
+  async chatSystemFor(code: string | null, assignmentId: string | null, today: string): Promise<string> {
+    const records = await this.repo.listRecords();
+    const course = code ? records.find((r) => r.entityType === 'course' && r.fields.code === code) : null;
+    const { facts } = code ? await this.syllabusFor(code) : { facts: null };
+    const grading = facts?.grading.map((g) => `${g.label}: ${g.points} points, ${g.percent}%`).join('\n') ?? '';
+    const mine = records.filter((r) => r.entityType === 'assignment' && (!code || r.fields.courseCode === code) && r.fields.status !== 'submitted');
+    const dueOf = (r: ConfirmedRecord) => (r.fields.dueDate as AcademicDate | null)?.iso ?? null;
+    const upcoming = mine.filter((r) => dueOf(r) && (dueOf(r) as string) >= today).sort((a, b) => (dueOf(a) as string).localeCompare(dueOf(b) as string)).slice(0, 8)
+      .map((r) => `${String(r.fields.title)} (${dueOf(r)}${typeof r.fields.pointsPossible === 'number' ? `, ${r.fields.pointsPossible} pts` : ''})`).join('\n');
+    let focus: { title: string; brief: string } | null = null;
+    if (assignmentId) {
+      const b = await this.briefFor(assignmentId);
+      if (b) focus = { title: b.title, brief: briefToText(b) };
+    }
+    return chatSystem({
+      courseCode: code, courseName: course?.fields.name ? String(course.fields.name) : null, instructor: course?.fields.instructor ? String(course.fields.instructor) : null,
+      grading, upcoming, focus,
+    }, globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12));
+  }
+
+  /** One chat turn: the student's message in, the assistant's reply out. */
+  async chatReply(key: string, code: string | null, assignmentId: string | null, text: string, complete: Completer, today: string): Promise<string> {
+    const s = await this.aiSettings();
+    if (!aiReady(s)) {
+      throw new Error(isCloud(s.provider) && !s.cloudConsent
+        ? `Agree to send material to ${PROVIDER_NAME[s.provider]} in Semester setup → AI assistant first.`
+        : 'Turn on the AI assistant in Semester setup first, then I can answer here.');
+    }
+    const history = (await this.chatHistory(key)).filter((m) => m.kind !== 'intake').slice(-12).map((m) => ({ role: m.role, content: m.content }));
+    const system = await this.chatSystemFor(code, assignmentId, today);
+    return complete({ provider: s.provider, model: s.model, system, prompt: text, history, json: false, baseUrl: s.provider === 'ollama' ? s.ollamaUrl : undefined });
   }
 }

@@ -30,7 +30,14 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Fix: PDF import on macOS (latest)**
+**Update 8: chat, briefs, unit blocks and reminders (latest)**
+
+1. Chat tab with its own look; pastes are classified and imported once, answers use fenced, untrusted course material, and OpenAI keys are kept in the keychain.
+2. Syllabus facts (grading table, posting rules, readings per unit) feed the Brief tab, the unit blocks and the reminder plan.
+3. Reminders with first post milestones on the calendar, desktop notifications and Twilio texts; the phone number stays in local settings only.
+4. 156 Vitest tests and the Rust tests pass. Texts could not be sent live from the build sandbox.
+
+**Fix: PDF import on macOS**
 
 Dropping a PDF on the Mac app failed with "undefined is not a function". PDF.js reads page text by looping over a ReadableStream with `for await`, which Safari's engine (used by the macOS app) does not support; the Linux test machine's WebKit does, so the end to end test missed it. The app now adds that loop where it is missing, in the page and in the PDF worker. A unit test and the desktop end to end test both remove the feature before importing a PDF, so this stays covered.
 

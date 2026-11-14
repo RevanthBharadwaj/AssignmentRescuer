@@ -10,13 +10,13 @@ import { normaliseKey } from './util';
  * has can be linked, and nothing in it changes deadlines or records.
  */
 
-export type AiProvider = 'none' | 'ollama' | 'anthropic';
+export type AiProvider = 'none' | 'ollama' | 'anthropic' | 'openai';
 
 export interface AiSettings {
   provider: AiProvider;
   model: string;
   ollamaUrl: string;
-  /** The student agreed that material they analyze is sent to Anthropic. */
+  /** The student agreed that material they analyze is sent to the cloud provider (Anthropic or OpenAI). */
   cloudConsent: boolean;
 }
 
@@ -25,7 +25,20 @@ export const ANTHROPIC_MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fast, lowest cost)' },
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (more thorough)' },
 ];
+export const OPENAI_MODELS = [
+  { id: 'gpt-4o-mini', label: 'gpt-4o-mini (fast, low cost)' },
+  { id: 'gpt-4o', label: 'gpt-4o (more thorough)' },
+  { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+];
 export const DEFAULT_OLLAMA_MODEL = 'llama3.1';
+
+export const isCloud = (p: AiProvider) => p === 'anthropic' || p === 'openai';
+export const PROVIDER_NAME: Record<AiProvider, string> = { none: 'Off', ollama: 'a local model', anthropic: 'Claude', openai: 'OpenAI' };
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export interface CompletionRequest {
   provider: AiProvider;
@@ -33,12 +46,16 @@ export interface CompletionRequest {
   system: string;
   prompt: string;
   baseUrl?: string;
+  /** Earlier turns of a conversation, oldest first. */
+  history?: ChatTurn[];
+  /** False for free text (chat). Briefings ask for JSON. */
+  json?: boolean;
 }
 export type Completer = (req: CompletionRequest) => Promise<string>;
 
 export function aiReady(s: AiSettings): boolean {
   if (s.provider === 'ollama') return !!s.model;
-  if (s.provider === 'anthropic') return !!s.model && s.cloudConsent;
+  if (isCloud(s.provider)) return !!s.model && s.cloudConsent;
   return false;
 }
 

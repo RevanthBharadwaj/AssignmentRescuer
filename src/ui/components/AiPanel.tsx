@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { ConfirmedRecord } from '../../core/types';
-import { ANTHROPIC_MODELS, DEFAULT_OLLAMA_MODEL, aiReady, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
-import { completeAi, hasAnthropicKey, setAnthropicKey } from '../aiClient';
+import { ANTHROPIC_MODELS, DEFAULT_OLLAMA_MODEL, OPENAI_MODELS, aiReady, isCloud, type AiProvider, type AiSettings, type BriefingAction } from '../../core/ai';
+import { completeAi, hasSecret, setSecret } from '../aiClient';
 import { errorMessage } from '../format';
 
 /* ---------- a saved AI note ---------- */
@@ -22,7 +22,7 @@ export function AiNote({ note }: { note: ConfirmedRecord }) {
         <strong>{String(note.fields.title)}</strong>
         <span className="muted small">{String(note.fields.model)} · {new Date(String(note.fields.createdAt)).toLocaleString()}</span>
       </div>
-      <p>{String(note.fields.summary)}</p>
+      <p style={{ whiteSpace: 'pre-wrap' }}>{String(note.fields.summary)}</p>
       {actions.length > 0 && (
         <>
           <h4>What to do</h4>
@@ -90,28 +90,35 @@ export const runAssignment = (service: ReturnType<typeof useApp>['service'], id:
 
 const PROVIDERS: { id: AiProvider; label: string; help: string }[] = [
   { id: 'none', label: 'Off', help: 'No AI. Everything else works as before.' },
-  { id: 'ollama', label: 'Local model (Ollama)', help: 'Free. Runs on this Mac; nothing leaves it. Install Ollama from ollama.com and run `ollama pull llama3.1` once.' },
-  { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Best quality. Needs an API key from console.anthropic.com (paid per use). Material you analyze is sent to Anthropic.' },
+  { id: 'ollama', label: 'Local model (Ollama)', help: 'Free. Runs on this computer; nothing leaves it. Install Ollama from ollama.com and run `ollama pull llama3.1` once.' },
+  { id: 'openai', label: 'OpenAI (ChatGPT models)', help: 'Needs an API key from platform.openai.com (paid per use). Material you analyze or paste into Chat is sent to OpenAI.' },
+  { id: 'anthropic', label: 'Claude (Anthropic API)', help: 'Needs an API key from console.anthropic.com (paid per use). Material you analyze or paste into Chat is sent to Anthropic.' },
 ];
+
+const defaultModel = (p: AiProvider) => (p === 'ollama' ? DEFAULT_OLLAMA_MODEL : p === 'anthropic' ? ANTHROPIC_MODELS[0].id : p === 'openai' ? OPENAI_MODELS[0].id : '');
+const providerName = (p: AiProvider) => (p === 'openai' ? 'OpenAI' : 'Anthropic');
 
 export function AiSettingsCard() {
   const { service, version, refresh } = useApp();
-  const { data } = useAsync(async () => ({ s: await service.aiSettings(), hasKey: await hasAnthropicKey() }), [version]);
+  const { data } = useAsync(async () => ({ s: await service.aiSettings(), keys: { anthropic: await hasSecret('anthropic'), openai: await hasSecret('openai') } }), [version]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<AiSettings | null>(null);
   const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   if (!data) return null;
   const s = draft ?? data.s;
+  const cloud = isCloud(s.provider);
+  const hasKey = s.provider === 'anthropic' || s.provider === 'openai' ? data.keys[s.provider] : false;
   const showForm = editing || data.s.provider === 'none';
 
   if (!showForm) {
+    const saved = isCloud(data.s.provider) ? data.keys[data.s.provider as 'anthropic' | 'openai'] : false;
     return (
       <>
         <dl className="saved-values">
           <div><dt>Provider</dt><dd>{PROVIDERS.find((p) => p.id === data.s.provider)?.label}</dd></div>
           <div><dt>Model</dt><dd className="mono small">{data.s.model}</dd></div>
-          {data.s.provider === 'anthropic' && <div><dt>API key</dt><dd className={data.hasKey ? '' : 'none'}>{data.hasKey ? 'Saved in your Keychain' : 'Not saved'}</dd></div>}
+          {isCloud(data.s.provider) && <div><dt>API key</dt><dd className={saved ? '' : 'none'}>{saved ? 'Saved in your keychain' : 'Not saved'}</dd></div>}
         </dl>
         <button type="button" className="modify" onClick={() => { setDraft(data.s); setEditing(true); }}>Modify</button>
       </>
@@ -121,10 +128,9 @@ export function AiSettingsCard() {
   const save = async () => {
     setError(null);
     try {
-      if (s.provider === 'anthropic' && key.trim()) await setAnthropicKey(key.trim());
-      if (s.provider === 'anthropic' && !key.trim() && !data.hasKey) throw new Error('Paste your Anthropic API key.');
-      if (s.provider !== 'anthropic' && data.hasKey) await setAnthropicKey(null).catch(() => undefined);
-      await service.saveAiSettings({ ...s, model: s.model || (s.provider === 'ollama' ? DEFAULT_OLLAMA_MODEL : s.provider === 'anthropic' ? ANTHROPIC_MODELS[0].id : '') });
+      if (cloud && key.trim()) await setSecret(s.provider as 'anthropic' | 'openai', key.trim());
+      if (cloud && !key.trim() && !hasKey) throw new Error(`Paste your ${providerName(s.provider)} API key.`);
+      await service.saveAiSettings({ ...s, model: s.model || defaultModel(s.provider) });
       setKey('');
       setDraft(null);
       setEditing(false);
@@ -136,11 +142,11 @@ export function AiSettingsCard() {
 
   return (
     <>
-      <p className="muted small">The assistant reads an announcement or an assignment's course material and writes down what you need to do. It never changes dates or items.</p>
+      <p className="muted small">The assistant answers in Chat and reads announcements and assignments to write down what you need to do. It never changes dates or items.</p>
       <div className="kind-options">
         {PROVIDERS.map((p) => (
           <label key={p.id} className={`kind-option ${s.provider === p.id ? 'on' : ''}`}>
-            <input type="radio" name="ai-provider" checked={s.provider === p.id} onChange={() => setDraft({ ...s, provider: p.id, model: p.id === 'ollama' ? DEFAULT_OLLAMA_MODEL : p.id === 'anthropic' ? ANTHROPIC_MODELS[0].id : '' })} />
+            <input type="radio" name="ai-provider" checked={s.provider === p.id} onChange={() => setDraft({ ...s, provider: p.id, model: defaultModel(p.id) })} />
             <strong>{p.label}</strong>
             <span className="muted small">{p.help}</span>
           </label>
@@ -152,26 +158,33 @@ export function AiSettingsCard() {
           <label>Ollama address<input value={s.ollamaUrl} onChange={(e) => setDraft({ ...s, ollamaUrl: e.target.value })} /></label>
         </div>
       )}
-      {s.provider === 'anthropic' && (
+      {cloud && (
         <>
           <div className="grid">
             <label>Model
-              <select value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })}>
-                {ANTHROPIC_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+              {s.provider === 'anthropic' ? (
+                <select value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })}>
+                  {ANTHROPIC_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                </select>
+              ) : (
+                <>
+                  <input list="openai-models" value={s.model} onChange={(e) => setDraft({ ...s, model: e.target.value })} />
+                  <datalist id="openai-models">{OPENAI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
+                </>
+              )}
             </label>
-            <label>API key {data.hasKey ? '(saved; paste a new one to replace it)' : ''}
-              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" autoComplete="off" spellCheck={false} />
+            <label>API key {hasKey ? '(saved; paste a new one to replace it)' : ''}
+              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={s.provider === 'openai' ? 'sk-…' : 'sk-ant-…'} autoComplete="off" spellCheck={false} />
             </label>
           </div>
           <label className="consent">
             <input type="checkbox" checked={s.cloudConsent} onChange={(e) => setDraft({ ...s, cloudConsent: e.target.checked })} />
-            <span>I agree that the text of the announcements and assignments I choose to analyze is sent to Anthropic. Nothing is sent until I press an AI button.</span>
+            <span>I agree that the text of announcements and assignments I analyze, and anything I type or paste into Chat, is sent to {providerName(s.provider)}. Nothing is sent until I press an AI button or send a chat message.</span>
           </label>
         </>
       )}
       <div className="row">
-        <button type="button" disabled={s.provider === 'anthropic' && !s.cloudConsent} onClick={save}>Save AI settings</button>
+        <button type="button" disabled={cloud && !s.cloudConsent} onClick={save}>Save AI settings</button>
         {editing && <button type="button" className="secondary" onClick={() => { setDraft(null); setEditing(false); }}>Cancel</button>}
       </div>
       {error && <p role="alert" className="error">{error}</p>}

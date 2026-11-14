@@ -33,6 +33,10 @@ You set up your semester once (school, semester dates, courses). Then, for each 
 |---|---|
 | Semester setup with real fields: your name, school, program, term, first and last day, courses; saved sections become read only with a Modify button | ✅ Available |
 | Canvas course list (Courses → All Courses) pasted into setup: codes, names, sections and term | ✅ Available |
+| Course home with Unit 1 to 7 blocks (state, graded count, points, next due) that open that unit's modules | ✅ Available |
+| Chat tab (violet, in the bottom dock): paste anything copied from Canvas and it is sorted into the right course without duplicates; ask about an assignment with your own saved material; works with Ollama, OpenAI or Claude | ✅ Available |
+| Assignment Brief tab: what is required, scoring, resources to read (from the syllabus and your imports) and key dates | ✅ Available |
+| Reminders: the day before and the day of, every day for 5 days before big assignments, plus the Wednesday first post for Saturday discussions; desktop notification and text through your own Twilio account while the app is open | ✅ Available |
 | Course pages laid out like Canvas: breadcrumbs, and a course menu with Home, Announcements, Syllabus, Modules, Assignments, Policies and rules, Files and sources, Add material | ✅ Available |
 | Each piece of material labelled by kind (syllabus, announcement, modules page, assignment instructions, rubric, course policies, reading), chosen when adding or inferred, and changeable later | ✅ Available |
 | Assignment pages with Overview, Instructions, Rubric, Course context and Title page; the context gathers the syllabus rules that apply, announcements that mention the assignment and the unit's readings, each with its source | ✅ Available |
