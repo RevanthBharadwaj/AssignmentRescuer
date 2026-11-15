@@ -19,11 +19,12 @@ import type { EntityType, FieldValue, Provenance } from './types';
 import { aiReady, announcementPrompt, assignmentPrompt, normaliseAi, parseBriefing, type AiJob, type AiSettings, type Completer, type Provider } from './ai';
 import { costOf, estimateTokens, infoFor, pickModel, spentThisMonth, type Pick, type Spent, type UsageEntry } from './providers';
 import { buildAssignmentContext, toAnnouncement } from './courseContent';
-import { normaliseCourseCode } from './util';
+import { attachmentText, attachmentsFor, type MaterialLink } from './materials';
+import { normaliseCourseCode, sameCourse } from './util';
 import { parseSyllabus, unitItems, unitText, matchUnitItem, type SyllabusFacts } from './syllabus';
 import { buildBrief, briefToText, type Brief } from './brief';
 import { prettyDate, prettyTime, milestonesFor, remindersFor, dueReminders, formatDigest, formatEmail, scheduleEmails, DEFAULT_PUSH, type Email, type Milestone, type PushSettings, type Reminder } from './schedule';
-import { summariseUnits, type UnitSummary } from './units';
+import { summariseUnits, unitNumber, type UnitSummary } from './units';
 import { parseOverview, syllabusPrompt } from './ai';
 import { chunkText, retrieve } from './retrieve';
 import { modelFor, modelLabel } from './models';
@@ -44,7 +45,10 @@ export type UndoOp =
   | { op: 'restore_fields'; recordId: string; fields: Record<string, FieldValue> }
   | { op: 'restore_record'; record: ConfirmedRecord }
   | { op: 'remove_record'; recordId: string }
-  | { op: 'restore_setting'; key: string; value: unknown };
+  | { op: 'restore_setting'; key: string; value: unknown }
+  | { op: 'restore_hints'; sourceId: string; hints: Record<string, string | undefined> };
+export interface Sticky { id: string; text: string; color: 'yellow' | 'green' | 'blue' | 'pink' | 'orange'; courseCode: string | null; assignmentId: string | null; createdAt: string }
+export interface Notice { id: string; tone: 'overdue' | 'today' | 'soon' | 'info'; text: string; route: { name: 'assignment'; id: string } | { name: 'review' } | { name: 'home' } }
 export interface UndoEntry { id: string; at: string; label: string; ops: UndoOp[] }
 
 export interface SemesterInput {
@@ -264,7 +268,8 @@ export class AcademicService {
     if (!a) throw new Error('That assignment no longer exists.');
     const code = String(a.fields.courseCode ?? '');
     const sources = await this.repo.listSources();
-    const ctx = buildAssignmentContext(a, records, sources);
+    const links = await this.materialLinks();
+    const ctx = buildAssignmentContext(a, records, sources, links);
     const material = [
       `ASSIGNMENT: ${String(a.fields.title)}${(a.fields.dueDate as AcademicDate | null)?.iso ? `, due ${(a.fields.dueDate as AcademicDate).iso}` : ''}${typeof a.fields.pointsPossible === 'number' ? `, ${a.fields.pointsPossible} points` : ''}`,
       typeof a.fields.instructions === 'string' ? `INSTRUCTIONS:\n${a.fields.instructions}` : '',
@@ -273,6 +278,7 @@ export class AcademicService {
       ...ctx.announcements.map((x) => `ANNOUNCEMENT ${x.location ?? ''}: ${x.title}\n${x.body}`),
       ...ctx.policies.slice(0, 8).map((x) => `COURSE RULE: ${x.title}\n${x.body}`),
       ctx.readings.length ? `READINGS FOR THIS UNIT:\n${ctx.readings.map((r) => `- ${r.title}`).join('\n')}` : '',
+      ...attachmentsFor(a, links, sources).map((x) => `ATTACHED FILE (${x.source.originalName}${x.note ? `, ${x.note}` : ''}):\n${attachmentText(x).slice(0, 8000)}`),
     ].filter(Boolean).join('\n\n');
     const assignments = records.filter((r) => r.entityType === 'assignment' && r.fields.courseCode === code);
     const { text, settings } = await this.runAi('assignment', complete, assignmentPrompt(a, material, assignments));
@@ -383,9 +389,14 @@ export class AcademicService {
   async addCourse(input: CourseInput) {
     const semester = (await this.onboarding()).currentSemester;
     const code = normaliseCourseCode(input.code);
-    const existing = await this.repo.findRecordByKey('course', code);
+    let existing = await this.repo.findRecordByKey('course', code);
+    if (!existing) {
+      // BUS 719A when BUS 719 is saved is the same course: reuse it instead of making a second one.
+      const similar = (await this.repo.listRecords('course')).find((c) => sameCourse(String(c.fields.code), code));
+      if (similar) existing = similar;
+    }
     const fields: Record<string, FieldValue> = {
-      code,
+      code: existing ? String(existing.fields.code) : code,
       name: input.name?.trim() || null,
       instructor: input.instructor?.trim() || null,
       semester: (semester?.fields.name as string | null) ?? null,
@@ -411,8 +422,13 @@ export class AcademicService {
       const c = r.fields.courseCode;
       if (typeof c === 'string' && c && !have.has(c)) missing.add(c);
     }
-    for (const code of missing) await this.addCourse({ code, name: null, instructor: null });
-    return missing.size;
+    let made = 0;
+    for (const code of missing) {
+      const keep = records.find((r) => r.entityType === 'course' && sameCourse(String(r.fields.code), code));
+      if (keep) await this.moveCourseItems(code, keep, `Moved ${code} into ${String(keep.fields.code)}`);
+      else { await this.addCourse({ code, name: null, instructor: null }); made++; }
+    }
+    return made;
   }
 
   /**
@@ -623,7 +639,7 @@ export class AcademicService {
     const { text, facts } = await this.syllabusFor(code);
     const sources = sourcesForCourse(code, await this.repo.listSources(), records);
     const ms = milestonesFor(records, facts ? { [code]: facts } : {});
-    return buildBrief(rec, records, sources, facts, text, ms);
+    return buildBrief(rec, records, sources, facts, text, ms, await this.materialLinks());
   }
 
   async units(code: string, today: string): Promise<UnitSummary[]> {
@@ -727,6 +743,7 @@ export class AcademicService {
         if (await this.repo.getRecord(op.recordId)) await this.repo.correctRecord(op.recordId, op.fields);
       } else if (op.op === 'restore_record') await this.repo.restoreRecord(op.record);
       else if (op.op === 'remove_record') await this.repo.deleteRecord(op.recordId).catch(() => undefined);
+      else if (op.op === 'restore_hints') await this.repo.updateSourceHints(op.sourceId, op.hints).catch(() => undefined);
       else await this.repo.setSetting(op.key, op.value);
     }
     await this.repo.setSetting('undo.journal', list.filter((e) => e.id !== entryId));
@@ -742,6 +759,181 @@ export class AcademicService {
     await this.journal(label, [{ op: 'restore_fields', recordId, fields: old }]);
     await this.repo.correctRecord(recordId, fields);
   }
+
+
+  /** Move everything saved under one course code into another course, skipping exact copies. Can be undone. */
+  private async moveCourseItems(fromCode: string, keep: ConfirmedRecord, label: string): Promise<number> {
+    const toCode = String(keep.fields.code);
+    const records = await this.repo.listRecords();
+    const mine = records.filter((r) => r.entityType !== 'course' && r.fields.courseCode === fromCode);
+    const there = records.filter((r) => r.entityType !== 'course' && r.fields.courseCode === toCode);
+    const sig = (r: ConfirmedRecord) => `${r.entityType}|${String(r.fields.title ?? r.fields.criterion ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}|${((r.fields.dueDate ?? r.fields.date) as AcademicDate | null)?.iso ?? ''}`;
+    const taken = new Set(there.map(sig));
+    const ops: UndoOp[] = [];
+    for (const r of mine) {
+      ops.push({ op: 'restore_record', record: r });
+      if (taken.has(sig(r))) { await this.repo.deleteRecord(r.id); continue; }
+      taken.add(sig(r));
+      const key = r.key.startsWith(`${fromCode}|`) ? `${toCode}|${r.key.slice(fromCode.length + 1)}` : r.key;
+      const clash = await this.repo.findRecordByKey(r.entityType, key);
+      if (clash && clash.id !== r.id) { await this.repo.deleteRecord(r.id); continue; }
+      await this.repo.rekeyRecord(r.id, key);
+      await this.repo.correctRecord(r.id, { courseCode: toCode });
+    }
+    for (const src of await this.repo.listSources()) {
+      if (src.hints.course && sameCourse(src.hints.course, fromCode) && normaliseCourseCode(src.hints.course) !== toCode) {
+        ops.push({ op: 'restore_hints', sourceId: src.id, hints: { course: src.hints.course } });
+        await this.repo.updateSourceHints(src.id, { course: toCode });
+      }
+    }
+    for (const p of await this.repo.listProposals('pending')) {
+      if (p.candidate.fields.courseCode === fromCode || p.key === fromCode) await this.repo.rejectProposal(p.id);
+    }
+    if (ops.length) await this.journal(label, ops);
+    return mine.length;
+  }
+
+  /** Two saved courses that are really one: keep one, move the other's work into it, remove the extra. Can be undone. */
+  async mergeCourses(keepId: string, dropId: string): Promise<void> {
+    const keep = await this.repo.getRecord(keepId);
+    const drop = await this.repo.getRecord(dropId);
+    if (!keep || !drop) throw new Error('That course no longer exists.');
+    const label = `Merged ${String(drop.fields.code)} into ${String(keep.fields.code)}`;
+    const before = (await this.undoList()).length;
+    await this.moveCourseItems(String(drop.fields.code), keep, label);
+    // Fill gaps in the kept course from the extra one.
+    const fill: Record<string, FieldValue> = {};
+    for (const k of ['name', 'instructor', 'section', 'lmsUrl', 'semester']) if (!keep.fields[k] && drop.fields[k]) fill[k] = drop.fields[k] as FieldValue;
+    const old: Record<string, FieldValue> = {};
+    for (const k of Object.keys(fill)) old[k] = (keep.fields[k] ?? null) as FieldValue;
+    const ops: UndoOp[] = [{ op: 'restore_record', record: drop }];
+    if (Object.keys(fill).length) { ops.push({ op: 'restore_fields', recordId: keepId, fields: old }); await this.repo.correctRecord(keepId, fill); }
+    await this.repo.deleteRecord(dropId);
+    const list = await this.undoList();
+    if (list.length > before) {
+      // One undo entry for the whole merge.
+      const moved = list[list.length - 1];
+      await this.repo.setSetting('undo.journal', [...list.slice(0, -1), { ...moved, label, ops: [...moved.ops, ...ops] }]);
+    } else await this.journal(label, ops);
+    await this.clearChat(String(drop.fields.code));
+  }
+
+  /** Delete one module (unit) from a course: its assignments, readings and dates. Can be undone. */
+  async deleteUnit(code: string, unit: number | null): Promise<number> {
+    const records = await this.repo.listRecords();
+    const gone = records.filter((r) => r.fields.courseCode === code && r.entityType !== 'course' && ['assignment', 'course_material', 'timeline_event'].includes(r.entityType)
+      && unitNumber(r.fields.unit) === unit);
+    if (!gone.length) return 0;
+    await this.journal(`Deleted ${unit === null ? 'Course resources' : `Unit ${unit}`} from ${code}`, gone.map((record) => ({ op: 'restore_record' as const, record })));
+    for (const r of gone) await this.repo.deleteRecord(r.id);
+    return gone.length;
+  }
+
+  /** Delete one saved item. Can be undone. */
+  async deleteItem(id: string): Promise<void> {
+    const rec = await this.repo.getRecord(id);
+    if (!rec) return;
+    await this.journal(`Deleted “${String(rec.fields.title ?? rec.key)}”`, [{ op: 'restore_record', record: rec }]);
+    await this.repo.deleteRecord(id);
+  }
+
+
+  // ---------- sticky notes ----------
+
+  async stickies(): Promise<Sticky[]> {
+    return this.repo.getSetting<Sticky[]>('stickies', []);
+  }
+
+  async saveSticky(note: Partial<Sticky> & { id?: string }, now = new Date().toISOString()): Promise<Sticky> {
+    const list = await this.stickies();
+    const i = note.id ? list.findIndex((n) => n.id === note.id) : -1;
+    const saved: Sticky = i >= 0 ? { ...list[i], ...note } as Sticky : {
+      id: `n_${now.replace(/\D/g, '')}_${Math.random().toString(36).slice(2, 6)}`, text: '', color: 'yellow', courseCode: null, assignmentId: null, createdAt: now, ...note,
+    } as Sticky;
+    await this.repo.setSetting('stickies', i >= 0 ? list.map((n, j) => (j === i ? saved : n)) : [...list, saved]);
+    return saved;
+  }
+
+  /** Delete a note. Returns the notes as they were, so the screen can offer Undo. */
+  async deleteSticky(id: string): Promise<Sticky[]> {
+    const list = await this.stickies();
+    await this.repo.setSetting('stickies', list.filter((n) => n.id !== id));
+    return list;
+  }
+
+  async restoreStickies(list: Sticky[]): Promise<void> {
+    await this.repo.setSetting('stickies', list);
+  }
+
+  // ---------- notifications ----------
+
+  /** What needs attention now, newest concern first. Read ones are hidden until tomorrow's list differs. */
+  async notices(today: string): Promise<Notice[]> {
+    const records = await this.repo.listRecords();
+    const read = new Set(await this.repo.getSetting<string[]>('notice.read', []));
+    const out: Notice[] = [];
+    const dayDiff = (iso: string) => Math.round((Date.parse(iso) - Date.parse(today)) / 86_400_000);
+    const open = records.filter((r) => r.entityType === 'assignment' && r.fields.status !== 'submitted').map((r) => ({ r, iso: ((r.fields.dueDate ?? null) as AcademicDate | null)?.iso ?? null, time: ((r.fields.dueDate ?? null) as AcademicDate | null)?.time ?? null })).filter((x) => x.iso);
+    for (const { r, iso, time } of open.sort((a, b) => (a.iso as string).localeCompare(b.iso as string) || (a.time ?? '99').localeCompare(b.time ?? '99'))) {
+      const n = dayDiff(iso as string);
+      const title = String(r.fields.title);
+      if (n < 0) out.push({ id: `overdue|${r.id}|${today}`, tone: 'overdue', text: `${title} was due ${-n} day${n === -1 ? '' : 's'} ago`, route: { name: 'assignment', id: r.id } });
+      else if (n === 0) out.push({ id: `today|${r.id}|${today}`, tone: 'today', text: `${title} is due today${time ? ` at ${prettyTime(time)}` : ''}`, route: { name: 'assignment', id: r.id } });
+      else if (n <= 2) out.push({ id: `soon|${r.id}|${today}`, tone: 'soon', text: `${title} is due ${n === 1 ? 'tomorrow' : 'in 2 days'}`, route: { name: 'assignment', id: r.id } });
+    }
+    const pending = (await this.repo.listProposals('pending')).length;
+    if (pending) out.push({ id: `pending|${pending}`, tone: 'info', text: `${pending} item${pending === 1 ? '' : 's'} waiting for your review`, route: { name: 'review' } });
+    const sugg = (await this.suggestions(today)).length;
+    if (sugg) out.push({ id: `sugg|${sugg}`, tone: 'info', text: `${sugg} suggestion${sugg === 1 ? '' : 's'} to tidy your semester`, route: { name: 'review' } });
+    return out.filter((n) => !read.has(n.id));
+  }
+
+  async markNoticesRead(ids: string[]): Promise<void> {
+    const read = await this.repo.getSetting<string[]>('notice.read', []);
+    await this.repo.setSetting('notice.read', [...new Set([...read, ...ids])].slice(-300));
+  }
+
+  // ---------- done and dates ----------
+
+  /** Mark an assignment done. Can be undone. */
+  async markDone(id: string): Promise<void> {
+    await this.changeFields(id, { status: 'submitted' }, `Marked “${String((await this.repo.getRecord(id))?.fields.title ?? '')}” as done`);
+  }
+
+  /** Replace a due date by hand. The old date is kept for Undo, and the item is marked as set by you. */
+  async overrideDueDate(id: string, iso: string, time: string | null): Promise<void> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) throw new Error('Pick a date first.');
+    const rec = await this.repo.getRecord(id);
+    if (!rec) throw new Error('That assignment no longer exists.');
+    const old = (rec.fields.dueDate ?? null) as AcademicDate | null;
+    const [y, m, d] = iso.split('-').map(Number);
+    const next = { iso, year: y, month: m, day: d, yearSource: 'explicit', time: time || null, timeZone: old?.timeZone ?? null, raw: `${iso}${time ? ` ${time}` : ''}` } as unknown as FieldValue;
+    await this.changeFields(id, { dueDate: next, dueOverridden: true }, `Changed the due date of “${String(rec.fields.title)}”`);
+  }
+
+
+  // ---------- course materials (a course is a project) ----------
+
+  async materialLinks(): Promise<MaterialLink[]> {
+    return this.repo.getSetting<MaterialLink[]>('material.links', []);
+  }
+
+  /** Attach a file to an assignment, or change the note on an existing attachment. One file can serve many assignments. */
+  async attachMaterial(sourceId: string, assignmentId: string, note = ''): Promise<void> {
+    const a = await this.repo.getRecord(assignmentId);
+    if (!a) throw new Error('That assignment no longer exists.');
+    const list = await this.materialLinks();
+    const rest = list.filter((l) => !(l.sourceId === sourceId && l.assignmentKey === a.key));
+    await this.repo.setSetting('material.links', [...rest, { sourceId, assignmentKey: a.key, note: note.trim().slice(0, 160) }]);
+  }
+
+  async detachMaterial(sourceId: string, assignmentId: string): Promise<void> {
+    const a = await this.repo.getRecord(assignmentId);
+    if (!a) return;
+    const list = await this.materialLinks();
+    await this.repo.setSetting('material.links', list.filter((l) => !(l.sourceId === sourceId && l.assignmentKey === a.key)));
+  }
+
 
   // ---------- review ----------
 
@@ -787,6 +979,10 @@ export class AcademicService {
     else if (f.type === 'delete_record') {
       const rec = await this.repo.getRecord(f.recordId);
       if (rec) { undoId = await this.journal(`Removed “${String(rec.fields.title ?? rec.key)}”`, [{ op: 'restore_record', record: rec }]); await this.repo.deleteRecord(f.recordId); }
+    } else if (f.type === 'merge_courses') {
+      await this.mergeCourses(f.keepId, f.dropId);
+      const list = await this.undoList();
+      undoId = list[list.length - 1]?.id ?? null;
     } else if (f.type === 'remove_course') {
       await this.removeCourse(f.recordId);
       const list = await this.undoList();
@@ -918,15 +1114,20 @@ export class AcademicService {
   }
 
   /** Passages of this course's saved material that match a question. */
-  async passagesFor(code: string | null, query: string, settings: AiSettings, embed?: RawEmbed): Promise<{ text: string; how: 'meaning' | 'keywords' }[]> {
+  async passagesFor(code: string | null, query: string, settings: AiSettings, embed?: RawEmbed, assignmentId: string | null = null): Promise<{ text: string; how: 'meaning' | 'keywords' }[]> {
     if (!code) return [];
     const records = await this.repo.listRecords();
-    const sources = sourcesForCourse(code, await this.repo.listSources(), records);
-    const chunks = sources.flatMap((x) => chunkText(x.text, x.originalName));
+    const all = await this.repo.listSources();
+    const sources = sourcesForCourse(code, all, records);
     const tag = modelFor(settings, 'embed');
     const embedder = embed && tag ? (texts: string[]) => embed(tag, settings.ollamaUrl, texts) : undefined;
-    const found = await retrieve(query, chunks, 5, embedder, tag);
-    return found.map((f) => ({ text: `[${f.chunk.source}]\n${f.chunk.text}`, how: f.how }));
+    // Files attached to this assignment are searched first, then the rest of the course fills the remaining places.
+    const a = assignmentId ? records.find((r) => r.id === assignmentId) : null;
+    const attached = a ? attachmentsFor(a, await this.materialLinks(), all) : [];
+    const own = new Set(attached.map((x) => x.source.id));
+    const first = attached.length ? await retrieve(query, attached.flatMap((x) => chunkText(attachmentText(x), `${x.source.originalName}${x.note ? `, ${x.note}` : ''}`)), 3, embedder, tag) : [];
+    const rest = await retrieve(query, sources.filter((x) => !own.has(x.id)).flatMap((x) => chunkText(x.text, x.originalName)), first.length ? 3 : 5, embedder, tag);
+    return [...first, ...rest].map((f) => ({ text: `[${f.chunk.source}]\n${f.chunk.text}`, how: f.how }));
   }
 
   async chatSystemFor(code: string | null, assignmentId: string | null, today: string, passages: string[] = [], tools: string[] = []): Promise<string> {
@@ -1012,7 +1213,7 @@ export class AcademicService {
     const task = opts.task ?? (assignmentId ? 'assignment' : 'general');
     const job: AiJob = task === 'assignment' ? 'assignment' : 'chat';
     await this.pickFor(job); // fails early, with a plain message, when no model can answer
-    const found = await this.passagesFor(code, text, s, s.enabled.ollama ? opts.embed : undefined);
+    const found = await this.passagesFor(code, text, s, s.enabled.ollama ? opts.embed : undefined, assignmentId);
     const system = await this.chatSystemFor(code, assignmentId, today, found.map((f) => f.text), (opts.tools ?? []).map((t) => `${t.label}:\n${t.text}`));
     const { text: reply, pick } = await this.completeFor(job, complete, { system, prompt: text, history, json: false });
     const model = pick.model;

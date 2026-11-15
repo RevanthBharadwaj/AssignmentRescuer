@@ -1,5 +1,6 @@
 import type { ConfirmedRecord, AcademicDate } from './types';
 import { buildAssignmentContext } from './courseContent';
+import type { MaterialLink } from './materials';
 import type { CourseSource } from './courseContent';
 import { matchUnitItem, unitItems, unitReadingLines, unitText, gradeRowFor, type SyllabusFacts } from './syllabus';
 import { unitNumber } from './units';
@@ -42,12 +43,13 @@ export function buildBrief(
   facts: SyllabusFacts | null,
   syllabusText: string | null,
   milestones: Milestone[],
+  links: MaterialLink[] = [],
 ): Brief {
   const f = record.fields;
   const title = String(f.title ?? 'Assignment');
   const code = String(f.courseCode ?? '');
   const unit = unitNumber(f.unit);
-  const ctx = buildAssignmentContext(record, records, sources);
+  const ctx = buildAssignmentContext(record, records, sources, links);
   const section = unit !== null && syllabusText ? unitText(syllabusText, unit) : null;
   const items = section ? unitItems(section) : [];
   const item = matchUnitItem(title, items);

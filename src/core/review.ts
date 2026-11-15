@@ -2,6 +2,7 @@ import type { AcademicDate, ConfirmedRecord, FieldValue } from './types';
 import type { CourseSource } from './courseContent';
 import { buildAssignmentContext, sourcesForCourse } from './courseContent';
 import { analyseAssignment } from './assignments/checklist';
+import { sameCourse } from './util';
 import { detectRepeats, seriesName, type Repeat } from './repeats';
 
 /**
@@ -13,12 +14,13 @@ export type Fix =
   | { type: 'set_fields'; recordId: string; fields: Record<string, FieldValue>; label: string }
   | { type: 'delete_record'; recordId: string; label: string }
   | { type: 'remove_course'; recordId: string; label: string }
+  | { type: 'merge_courses'; keepId: string; dropId: string; label: string }
   | { type: 'add_repeat'; repeat: Repeat; label: string }
   | { type: 'open'; target: 'assignment' | 'course' | 'course_add' | 'setup'; id: string; label: string };
 
 export interface Suggestion {
   id: string;
-  kind: 'duplicate' | 'date' | 'missing' | 'cleanup' | 'finished' | 'mismatch' | 'repeat';
+  kind: 'duplicate' | 'course_duplicate' | 'date' | 'missing' | 'cleanup' | 'finished' | 'mismatch' | 'repeat';
   title: string;
   detail: string;
   fix: Fix;
@@ -88,6 +90,24 @@ export function ruleSuggestions(input: ReviewInput): Suggestion[] {
         title: `“${String(a.fields.title)}” may belong to ${other}`,
         detail: `Its title names ${other}, but it is saved under ${own}.`,
         fix: { type: 'set_fields', recordId: a.id, fields: { courseCode: other }, label: `Move to ${other}` },
+      });
+    }
+  }
+
+  // The same course saved twice, for example BUS 719 and BUS 719A, or two with the same name.
+  const nameKey = (c: ConfirmedRecord) => String(c.fields.name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  for (let i = 0; i < courses.length; i++) {
+    for (let j = i + 1; j < courses.length; j++) {
+      const a = courses[i], b = courses[j];
+      const ca = String(a.fields.code), cb = String(b.fields.code);
+      if (!(sameCourse(ca, cb) || (nameKey(a) && nameKey(a) === nameKey(b)))) continue;
+      const keep = ca.length <= cb.length ? a : b;
+      const drop = keep === a ? b : a;
+      out.push({
+        id: `course_duplicate|${keep.id}|${drop.id}`, kind: 'course_duplicate', by: 'rules',
+        title: `${ca} and ${cb} look like the same course`,
+        detail: `Merge ${String(drop.fields.code)} into ${String(keep.fields.code)}: its assignments and files move over and the extra course is removed.`,
+        fix: { type: 'merge_courses', keepId: keep.id, dropId: drop.id, label: `Merge into ${String(keep.fields.code)}` },
       });
     }
   }

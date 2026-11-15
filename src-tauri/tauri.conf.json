@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "Assignment Rescue AI", "width": 1200, "height": 820, "minWidth": 900, "minHeight": 600 }
+      { "title": "Assignment Rescue AI", "width": 1200, "height": 820, "minWidth": 900, "minHeight": 600, "dragDropEnabled": false }
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"

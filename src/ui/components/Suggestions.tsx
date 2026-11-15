@@ -7,8 +7,8 @@ import type { Suggestion } from '../../core/review';
 
 /** Mistakes and gaps found in the semester. Nothing changes until you press the button, and every change can be undone. */
 export function Suggestions() {
-  const { service, version, refresh, toast, go } = useApp();
-  const { data } = useAsync(async () => ({ list: await service.suggestions(), undo: await service.undoList() }), [version]);
+  const { service, version, refresh, toast, go, today } = useApp();
+  const { data } = useAsync(async () => ({ list: await service.suggestions(today), undo: await service.undoList() }), [version]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);

@@ -6,18 +6,30 @@ import { addDays } from '../../core/extract/dates';
 import { remindersDueToday } from '../../core/reminders/deadlineReminders';
 import type { AcademicDate } from '../../core/types';
 import { formatDate, formatTime } from '../format';
-import { CountUp, CourseDot, StatusButton, Urgency, statusOf } from '../ux';
+import { CountUp, CourseDot, StatusButton, Urgency, ProgressBar, statusOf } from '../ux';
+import { Stickies } from './Stickies';
+import { Calendar } from './Calendar';
+import { zoneNow } from '../../core/timezone';
+import { prettyDate, prettyTime } from '../../core/schedule';
+
+function greeting(zone: string): string {
+  const h = Number(zoneNow(zone).time.slice(0, 2));
+  return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
 
 export function Home() {
-  const { service, version, refresh, today, go } = useApp();
+  const { service, version, refresh, today, go, zone, markDone } = useApp();
   const [showFinished, setShowFinished] = useState(false);
+  const [only, setOnly] = useState<string | null>(null);
+  const [range, setRange] = useState<'week' | 'two' | 'all'>('two');
   const { data } = useAsync(async () => {
     const records = await service.repository.listRecords();
     return {
       onboarding: await service.onboarding(),
+      student: (await service.student()).name.trim().split(/\s+/)[0] ?? '',
       prompt: await service.subjectPrompt(today),
       next: await service.nextSemesterSettings(),
-      deadlines: await service.upcomingDeadlines(today, 14),
+      deadlines: await service.upcomingDeadlines(today, 400),
       reminders: remindersDueToday(await service.upcomingReminders(today), today),
       pending: (await service.repository.listProposals('pending')).length,
       courses: records.filter((r) => r.entityType === 'course'),
@@ -27,8 +39,11 @@ export function Home() {
 
   if (!data) return <p className="muted">Loading…</p>;
   const { onboarding, prompt, reminders, pending, next, courses, undated } = data;
+  const { student } = data;
   const finishedCount = data.deadlines.filter((r) => r.fields.status === 'submitted').length;
-  const deadlines = showFinished ? data.deadlines : data.deadlines.filter((r) => r.fields.status !== 'submitted');
+  const inRange = (r: (typeof data.deadlines)[number]) => range === 'all' || ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! <= addDays(today, range === 'week' ? 7 : 14);
+  const deadlines = (showFinished ? data.deadlines : data.deadlines.filter((r) => r.fields.status !== 'submitted'))
+    .filter((r) => !only || r.fields.courseCode === only).filter(inRange);
   const semester = onboarding.questions.find((q) => q.id === 'semester')?.answer;
   const weekEnd = addDays(today, 7);
   const thisWeek = deadlines.filter((r) => ((r.fields.dueDate ?? r.fields.date) as AcademicDate).iso! <= weekEnd);
@@ -43,6 +58,21 @@ export function Home() {
   // Earliest due date first, then the time of day; ties keep the order they were imported. Never by title or unit number.
   const reminderList = [...reminders].sort((a, b) =>
     a.dueDate.localeCompare(b.dueDate) || (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99'));
+
+  const nextUp = deadlines.find((r) => r.entityType === 'assignment' && statusOf(r) !== 'submitted') ?? null;
+  const nextDate = nextUp ? ((nextUp.fields.dueDate ?? nextUp.fields.date) as AcademicDate) : null;
+  const sem = onboarding.currentSemester;
+  const sStart = (sem?.fields.startDate as AcademicDate | null)?.iso ?? null;
+  const sEnd = (sem?.fields.endDate as AcademicDate | null)?.iso ?? null;
+  const span = sStart && sEnd && sEnd > sStart ? (() => {
+    const total = (Date.parse(sEnd) - Date.parse(sStart)) / 86_400_000;
+    const gone = Math.min(total, Math.max(0, (Date.parse(today) - Date.parse(sStart)) / 86_400_000));
+    return { pct: Math.round((gone / total) * 100), week: Math.min(Math.ceil((gone + 1) / 7), Math.ceil(total / 7)), weeks: Math.ceil(total / 7) };
+  })() : null;
+  const openCount = deadlines.filter((r) => r.entityType === 'assignment' && statusOf(r) !== 'submitted').length;
+  const lede = courses.length === 0 ? 'Add your courses and paste their Canvas pages, and this page fills in with what is due.'
+    : nextUp ? `${openCount} thing${openCount === 1 ? '' : 's'} on your plate. The next one is ${String(nextUp.fields.title).replace(/^Unit \d+:\s*/i, '')}, ${nextDate!.iso === today ? 'due today' : `due ${prettyDate(nextDate!.iso!)}`}.`
+    : 'Nothing is waiting on you right now. Enjoy it.';
 
   const row = (r: (typeof deadlines)[number], i: number) => {
     const d = (r.fields.dueDate ?? r.fields.date) as AcademicDate;
@@ -69,21 +99,55 @@ export function Home() {
     <>
       <section className="hero" aria-labelledby="home-title">
         <span className="chip">{semester ? semester.toLowerCase() : 'welcome'}</span>
-        <h1 id="home-title" className="display">Your semester</h1>
+        <h1 id="home-title" className="display">{greeting(zone)}{student ? `, ${student}` : ''}.</h1>
         <Hint id="home" />
-        <p className="lede">Every deadline from your courses in one place, taken from your own course pages and confirmed by you.</p>
+        <p className="lede">{lede}</p>
+        {span && (
+          <div className="course-progress" aria-label="Semester progress">
+            <ProgressBar pct={span.pct} label="Semester progress" />
+            <span className="muted small">Week {span.week} of {span.weeks} · {span.pct}% of the semester is behind you</span>
+          </div>
+        )}
         {courses.length === 0 ? (
           <button type="button" className="link lede-link" onClick={() => go({ name: 'setup' })}>set up your semester →</button>
         ) : pending > 0 ? (
           <button type="button" className="link lede-link" onClick={() => go({ name: 'review' })}>{pending} item{pending === 1 ? '' : 's'} waiting for review →</button>
-        ) : (
-          <button type="button" className="link lede-link" onClick={() => go({ name: 'courses' })}>open your courses →</button>
+        ) : null}
+
+        {nextUp && (
+          <div className="card next-up" aria-label="Next up">
+            <span className="chip">next up</span>
+            <h2 style={{ margin: '6px 0' }}>{String(nextUp.fields.title)}</h2>
+            <p className="muted">{courseName(nextUp.fields.courseCode)} · {prettyDate(nextDate!.iso!)}{nextDate!.time ? ` at ${prettyTime(nextDate!.time)}` : ''} <Urgency record={nextUp} /></p>
+            <div className="row">
+              <button type="button" onClick={() => go({ name: 'assignment', id: nextUp.id })}>Open it</button>
+              <button type="button" className="secondary" onClick={() => go({ name: 'assignment', id: nextUp.id, section: 'draft' })}>Check my draft</button>
+              <button type="button" className="secondary" onClick={() => go({ name: 'chat', code: String(nextUp.fields.courseCode ?? ''), assignmentId: nextUp.id })}>Ask in Chat</button>
+              <button type="button" className="secondary" onClick={() => markDone(nextUp)}>Mark as done</button>
+            </div>
+          </div>
         )}
 
         <div className="stats">
           <button type="button" className="stat" onClick={() => go({ name: 'courses' })}><span className="num"><CountUp value={courses.length} /></span><span className="what">course{courses.length === 1 ? '' : 's'} this semester →</span></button>
-          <button type="button" className="stat" onClick={() => go({ name: 'calendar' })}><span className="num"><CountUp value={thisWeek.filter((r) => statusOf(r) !== 'submitted').length} /></span><span className="what">still due in the next 7 days →</span></button>
+          <button type="button" className="stat" onClick={() => setRange('week')}><span className="num"><CountUp value={thisWeek.filter((r) => statusOf(r) !== 'submitted').length} /></span><span className="what">still due in the next 7 days</span></button>
           <button type="button" className="stat" onClick={() => go({ name: 'review' })}><span className="num"><CountUp value={pending} /></span><span className="what">waiting for your review →</span></button>
+        </div>
+
+        {courses.length > 1 && (
+          <div className="legend" role="group" aria-label="Show one course">
+            <button type="button" className={`legend-item ${only === null ? '' : 'off-soft'}`} aria-pressed={only === null} onClick={() => setOnly(null)}>All courses</button>
+            {courses.map((c) => (
+              <button key={c.id} type="button" className={`legend-item ${only === c.fields.code ? '' : 'off-soft'}`} aria-pressed={only === c.fields.code} title={courseHover(c.fields.code)} onClick={() => setOnly(only === c.fields.code ? null : String(c.fields.code))}>
+                <CourseDot code={c.fields.code} /> {String(c.fields.name ?? c.fields.code)}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="segmented" role="group" aria-label="How far ahead">
+          {([['week', 'Next 7 days'], ['two', 'Next 2 weeks'], ['all', 'Everything']] as const).map(([id, label]) => (
+            <button key={id} type="button" className={range === id ? 'on' : ''} aria-pressed={range === id} onClick={() => setRange(id)}>{label}</button>
+          ))}
         </div>
       </section>
 
@@ -162,6 +226,12 @@ export function Home() {
         <p className="muted small" style={{ marginTop: 40 }}>Next semester's subjects will be asked on {prompt.nextDate}.</p>
       )}
       {next.subjectsConfirmed && next.subjects.length > 0 && <p className="muted small">Next semester: {next.subjects.join(', ')}</p>}
+
+      <section aria-label="Calendar" style={{ marginTop: 32 }}>
+        <Calendar embedded />
+      </section>
+
+      <Stickies />
 
       <div className="signature" aria-hidden="true">Rescue</div>
     </>

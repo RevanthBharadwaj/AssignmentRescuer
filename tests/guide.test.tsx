@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { App } from '../src/ui/App';
 
@@ -16,7 +16,7 @@ describe('walkthrough and hints', () => {
     render(<App service={service} mode="test" today="2026-09-02" />);
     fireEvent.click(screen.getByRole('button', { name: 'Take the tour' }));
     expect(await screen.findByText('Step 1 of 6')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Welcome tour' })).getByRole('button', { name: 'Next' }));
     expect(screen.getByRole('heading', { name: 'Turn on the free AI assistant' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Choose your AI' }));
     expect(await screen.findByRole('heading', { name: 'Your semester' })).toBeInTheDocument();

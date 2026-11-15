@@ -47,7 +47,7 @@ describe('unit blocks and chat', () => {
     const blocks = await screen.findAllByRole('button', { name: /^Open Unit \d/ });
     expect(blocks.length).toBeGreaterThan(0);
     fireEvent.click(blocks[0]);
-    expect(await screen.findByRole('heading', { name: 'Week 1' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Unit 1' })).toBeInTheDocument();
   });
 
   it('has a chat tab that saves a paste once and answers questions', async () => {

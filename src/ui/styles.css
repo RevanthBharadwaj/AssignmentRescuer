@@ -874,3 +874,38 @@ main:has(.chat) { max-width: none; padding: 14px 24px calc(var(--dock-h) + 14px)
 .provider-box h3, .routing-box h3, .usage-card h3 { margin: 0; font-size: 16px; }
 .usage-row { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
 .usage-row .mono { color: var(--lime-200); }
+
+.drop-veil { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: color-mix(in srgb, var(--lime-400, #b7e35b) 18%, rgba(0,0,0,.55)); pointer-events: none; }
+.drop-veil > div { padding: 28px 40px; border: 2px dashed var(--lime-300, #c9ee7a); border-radius: 16px; background: var(--surface, #fff); font-size: 1.2rem; }
+.drop-card { position: fixed; right: 24px; bottom: 80px; z-index: 95; width: 340px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+
+/* celebration */
+.celebrate { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(0,0,0,.35); cursor: pointer; }
+.celebrate-card { background: var(--surface, #fff); border-radius: 18px; padding: 28px 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.4); animation: pop .35s cubic-bezier(.2,1.4,.4,1); max-width: 420px; }
+.celebrate-check { width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; background: var(--lime-400, #b7e35b); color: #12210a; }
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti span { position: absolute; top: -20px; border-radius: 2px; opacity: 0; animation-name: fall; animation-timing-function: ease-in; animation-fill-mode: forwards; }
+@keyframes fall { 0% { opacity: 1; transform: translateY(0) rotate(0deg); } 100% { opacity: 1; transform: translateY(105vh) rotate(720deg); } }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .confetti { display: none; } .celebrate-card { animation: none; } }
+
+/* sticky notes */
+.stickies { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-top: 8px; }
+.sticky { position: relative; padding: 10px 10px 8px; border-radius: 4px 4px 14px 4px; color: #1d1d1d; box-shadow: 0 4px 10px rgba(0,0,0,.25); transform: rotate(-.6deg); display: flex; flex-direction: column; gap: 6px; }
+.sticky:nth-child(even) { transform: rotate(.7deg); }
+.sticky textarea { background: transparent; border: 0; resize: vertical; min-height: 90px; color: inherit; font: inherit; width: 100%; outline: none; }
+.sticky .sticky-tools { display: flex; gap: 6px; align-items: center; font-size: .78rem; flex-wrap: wrap; }
+.sticky .sw { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.35); padding: 0; cursor: pointer; }
+.sticky.yellow { background: #ffe97a; } .sticky.green { background: #bfeea0; } .sticky.blue { background: #a9dcff; } .sticky.pink { background: #ffc2d9; } .sticky.orange { background: #ffcd94; }
+.sticky select { font-size: .75rem; max-width: 120px; }
+
+/* notifications */
+.notif { position: relative; }
+.notif-btn { position: relative; }
+.notif-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #ef476f; color: #fff; font-size: .7rem; display: grid; place-items: center; }
+.notif-pop { position: absolute; right: 0; top: 34px; z-index: 80; width: 340px; max-height: 420px; overflow: auto; background: var(--surface, #fff); border: 1px solid var(--line, #444); border-radius: 12px; padding: 10px; box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.notif-pop ul { list-style: none; margin: 0; padding: 0; }
+.notif-pop li button { width: 100%; text-align: left; padding: 8px; border-radius: 8px; background: transparent; border: 0; display: flex; gap: 8px; align-items: flex-start; }
+.notif-pop li button:hover { background: color-mix(in srgb, var(--lime-400, #b7e35b) 12%, transparent); }
+.notif-dot { width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; flex: none; background: #8aa; }
+.notif-dot.overdue { background: #ef476f; } .notif-dot.today { background: #ff9f1c; } .notif-dot.soon { background: #ffd166; } .notif-dot.info { background: #4cc9f0; }

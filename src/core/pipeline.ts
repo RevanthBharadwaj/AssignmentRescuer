@@ -20,7 +20,7 @@ import { focusAnnouncement } from './announcements';
 import { sourceKind } from './courseContent';
 import { approximateTermWindow } from './extract/dates';
 import { proposeChanges } from './merge/merge';
-import { fnv1a, newId, normaliseCourseCode, normaliseKey, sha256Hex } from './util';
+import { fnv1a, newId, normaliseCourseCode, normaliseKey, sameCourse, sha256Hex } from './util';
 
 /**
  * Unified import pipeline:
@@ -255,6 +255,23 @@ export async function runImport(inputs: ImportInput[], deps: PipelineDeps): Prom
     if (isAnn(s)) s.records = focusAnnouncement(s.records, known);
   }
   allRecords.splice(0, allRecords.length, ...result.sources.flatMap((s) => s.records));
+
+  // A syllabus that says BUS 719A belongs to the saved course BUS 719: use the saved code so nothing is duplicated.
+  const savedCodes = deps.confirmedRecords.filter((r) => r.entityType === 'course').map((r) => String(r.fields.code));
+  if (savedCodes.length) {
+    const canon = (code: string) => savedCodes.find((k) => k === code) ?? savedCodes.find((k) => sameCourse(k, code)) ?? code;
+    for (const r of allRecords) {
+      const field = r.entityType === 'course' ? 'code' : 'courseCode';
+      const old = r.fields[field];
+      if (typeof old !== 'string' || !old) continue;
+      const code = normaliseCourseCode(old);
+      const to = canon(code);
+      if (to === code) continue;
+      r.fields[field] = to;
+      if (r.key === code) r.key = to;
+      else if (r.key.startsWith(`${code}|`)) r.key = `${to}|${r.key.slice(code.length + 1)}`;
+    }
+  }
 
   // Remember which course the student added each item to, so the item is
   // reviewed there even when its text names a different course.

@@ -14,9 +14,9 @@ const STATE_LABEL: Record<UnitSummary['state'], string> = {
   empty: 'Nothing yet',
 };
 
-/** One block per unit, like the Unit 1 to Unit 7 buttons on the Canvas home page. Opens that unit in Modules. */
-export function UnitBlocks({ code }: { code: string }) {
-  const { service, version, go, today } = useApp();
+/** One block per unit, like the Unit 1 to Unit 7 buttons on the Canvas home page. Opens that unit right here on the course home. */
+export function UnitBlocks({ code, onOpen }: { code: string; onOpen: (unit: number | null) => void }) {
+  const { service, version, today } = useApp();
   const { data: all } = useAsync(() => service.units(code, today), [version, code, today]);
   const [showFinished, setShowFinished] = useState(false);
   if (!all || all.length === 0) return null;
@@ -36,7 +36,7 @@ export function UnitBlocks({ code }: { code: string }) {
             className={`unit-block ${u.state} stagger ${u.number === null ? 'resources' : ''}`}
             style={{ ['--i' as string]: i }}
             aria-label={`Open ${name}`}
-            onClick={() => go({ name: 'course', code, tab: 'modules', unit: u.number ?? 0 })}
+            onClick={() => onOpen(u.number)}
           >
             <span className="unit-top">
               <span className="unit-num">{u.number === null ? 'RESOURCES' : `UNIT ${u.number}`}</span>

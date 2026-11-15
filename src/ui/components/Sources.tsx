@@ -4,6 +4,7 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import { FEATURES, type FeatureStatus } from '../../core/features';
 import { MATERIAL_LABELS, sourceKind } from '../../core/courseContent';
+import { SourceSearch } from './SourceSearch';
 
 export function Sources() {
   const { service, version, refresh } = useApp();
@@ -20,6 +21,7 @@ export function Sources() {
         <p>Everything stays on this computer. Deleting a source also removes records that came only from it.</p>
       </div>
       {sources.length === 0 && <p className="muted">Nothing imported yet.</p>}
+      {sources.length > 0 && <SourceSearch sources={sources} />}
       {sources.map((s) => (
         <div key={s.id} className="card compact">
           <span className={`kind-badge k-${sourceKind(s)}`}>{MATERIAL_LABELS[sourceKind(s)]}</span>{' '}

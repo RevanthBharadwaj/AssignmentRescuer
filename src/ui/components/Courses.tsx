@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp, type AssignmentSection, type CourseTab } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ChangeProposal, ConfirmedRecord } from '../../core/types';
@@ -8,7 +8,9 @@ import {
   MATERIAL_KINDS, MATERIAL_LABELS, buildAssignmentContext, policySections, sourceKind, sourcesForCourse, toAnnouncement,
   type CourseSource, type MaterialKind, type PolicyTopic,
 } from '../../core/courseContent';
-import { byTime, unitFinished } from '../../core/finished';
+import { byTime } from '../../core/finished';
+import { unitNumber } from '../../core/units';
+import { prettyDate, prettyTime } from '../../core/schedule';
 import { Hint } from './Guide';
 import { structureSyllabus } from '../../core/syllabusStructure';
 import { FIELD_LABELS, errorMessage, formatDate, formatValue } from '../format';
@@ -20,6 +22,10 @@ import { Breadcrumbs } from './Breadcrumbs';
 import { UnitBlocks } from './UnitBlocks';
 import { BriefView } from './BriefView';
 import { DraftCheckView } from './DraftCheckView';
+import { SourceSearch } from './SourceSearch';
+import { Stickies } from './Stickies';
+import { MaterialsView } from './MaterialsView';
+import { usedIn } from '../../core/materials';
 import { AiButton, AiNote, runAnnouncement, runAssignment, runSyllabus } from './AiPanel';
 import { aiReady } from '../../core/ai';
 import { completeAi } from '../aiClient';
@@ -140,14 +146,12 @@ const NAV: { id: CourseTab; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'announcements', label: 'Announcements' },
   { id: 'syllabus', label: 'Syllabus' },
-  { id: 'modules', label: 'Modules' },
   { id: 'assignments', label: 'Assignments' },
-  { id: 'policies', label: 'Policies and rules' },
   { id: 'files', label: 'Files and sources' },
   { id: 'add', label: 'Add material' },
 ];
 
-const TAB_LABEL = Object.fromEntries(NAV.map((n) => [n.id, n.label])) as Record<CourseTab, string>;
+const TAB_LABEL = { ...Object.fromEntries(NAV.map((n) => [n.id, n.label])), modules: 'Home', policies: 'Assignments' } as Record<CourseTab, string>;
 
 function CourseShell({ d, tab, extra, children }: { d: CourseData; tab: CourseTab; extra?: { label: string }; children: ReactNode }) {
   const { go } = useApp();
@@ -221,12 +225,10 @@ export function CoursePage({ code, tab = 'home', addKind, forAssignment, unit }:
   if (!d) return <p className="muted">Loading…</p>;
   return (
     <CourseShell d={d} tab={tab}>
-      {tab === 'home' && <CourseHome d={d} />}
+      {(tab === 'home' || tab === 'modules') && <CourseHome d={d} focus={unit} />}
       {tab === 'announcements' && <Announcements d={d} />}
       {tab === 'syllabus' && <Syllabus d={d} />}
-      {tab === 'modules' && <Modules d={d} focus={unit} />}
-      {tab === 'assignments' && <Assignments d={d} />}
-      {tab === 'policies' && <Policies d={d} />}
+      {(tab === 'assignments' || tab === 'policies') && <Assignments d={d} />}
       {tab === 'files' && <Files d={d} />}
       {tab === 'add' && <AddToCourse d={d} initialKind={addKind as MaterialKind | undefined} forAssignment={forAssignment} />}
     </CourseShell>
@@ -235,8 +237,9 @@ export function CoursePage({ code, tab = 'home', addKind, forAssignment, unit }:
 
 /* ================= course home ================= */
 
-function CourseHome({ d }: { d: CourseData }) {
+function CourseHome({ d, focus }: { d: CourseData; focus?: number }) {
   const { go, today } = useApp();
+  const [openUnit, setOpenUnit] = useState<number | null | undefined>(focus === undefined ? undefined : focus === 0 ? null : focus);
   const graded = d.mine.filter((r) => r.entityType === 'assignment');
   const dated = d.mine.filter((r) => (r.entityType === 'assignment' || r.entityType === 'timeline_event') && r.fields.kind !== 'module' && dateOf(r));
   const upcoming = dated.filter((r) => (dateOf(r)?.iso ?? '') >= today && statusOf(r) !== 'submitted').sort(byDue).slice(0, 6);
@@ -259,7 +262,8 @@ function CourseHome({ d }: { d: CourseData }) {
         </div>
       )}
 
-      <UnitBlocks code={d.code} />
+      <UnitBlocks code={d.code} onOpen={(n) => setOpenUnit(n)} />
+      {openUnit !== undefined && <UnitPanel d={d} unit={openUnit} onClose={() => setOpenUnit(undefined)} />}
 
       {graded.length === 0 && (
         <Empty d={d} kind="modules" text="This course is empty. Start with the Canvas Modules page (select all, copy, paste), then add the syllabus and announcements." />
@@ -276,7 +280,6 @@ function CourseHome({ d }: { d: CourseData }) {
           <div className="card">
             <h2>Coming up</h2>
             {upcoming.length ? <DueList items={upcoming} /> : <p className="muted">Nothing upcoming.</p>}
-            <button type="button" className="link" onClick={() => go({ name: 'course', code: d.code, tab: 'modules' })}>see all by module →</button>
           </div>
           {undated.length > 0 && (
             <div className="card">
@@ -316,6 +319,7 @@ function CourseHome({ d }: { d: CourseData }) {
           </div>
         </aside>
       </div>
+      <Stickies courseCode={d.code} title={`Notes for ${d.code}`} />
     </>
   );
 }
@@ -416,65 +420,62 @@ function Syllabus({ d }: { d: CourseData }) {
   );
 }
 
-/* ================= modules ================= */
+/* ================= one module, opened on the course home ================= */
 
-function Modules({ d, focus }: { d: CourseData; focus?: number }) {
-  const { go, today } = useApp();
-  useEffect(() => {
-    if (focus === undefined) return;
-    const el = document.getElementById(`unit-${focus}`);
-    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
-  }, [focus]);
-  const items = d.mine.filter((r) => (r.entityType === 'assignment' || r.entityType === 'course_material' || r.entityType === 'timeline_event') && r.fields.kind !== 'module');
-  const units = new Map<string, ConfirmedRecord[]>();
-  for (const r of items) {
-    const u = String(r.fields.unit ?? 'Course resources');
-    units.set(u, [...(units.get(u) ?? []), r]);
-  }
-  const [showFinished, setShowFinished] = useState(false);
-  const allUnits = [...units.entries()].sort((a, b) => unitNum(a[0]) - unitNum(b[0]));
-  const isDone = ([unit, list]: [string, ConfirmedRecord[]]) => unitFinished({ graded: list.filter((r) => r.entityType === 'assignment') }, today) && !(focus !== undefined && (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus);
-  const finishedUnits = allUnits.filter(isDone);
-  const ordered = showFinished ? allUnits : allUnits.filter((e) => !isDone(e));
+function UnitPanel({ d, unit, onClose }: { d: CourseData; unit: number | null; onClose: () => void }) {
+  const { service, go, refresh, toast } = useApp();
+  const [confirming, setConfirming] = useState(false);
+  const items = d.mine.filter((r) => (r.entityType === 'assignment' || r.entityType === 'course_material' || r.entityType === 'timeline_event') && r.fields.kind !== 'module' && unitNumber(r.fields.unit) === unit);
+  const name = unit === null ? 'Course resources' : `Unit ${unit}`;
   const order = (r: ConfirmedRecord) => (r.entityType === 'course_material' ? (r.fields.kind === 'note' ? 3 : 0) : 1);
+  const undoLast = async () => { const u = (await service.undoList()).pop(); return u ? async () => { await service.undo(u.id); refresh(); } : undefined; };
 
   return (
-    <>
-      <PageHead d={d} title="Modules" sub="Your course week by week, the way Canvas lists it: readings and lectures first, then graded work." />
-      {allUnits.length === 0 ? <Empty d={d} kind="modules" text="No modules yet. In Canvas open Modules, select all, copy, and paste it here." /> : ordered.length === 0 ? <p className="muted">Every unit is finished.</p> : ordered.map(([unit, list], i) => (
-        <details key={unit} id={`unit-${unitNum(unit) === 999 ? 0 : unitNum(unit)}`} className={`card module stagger ${focus !== undefined && (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus ? 'focused' : ''}`} style={{ ['--i' as string]: i }} open={focus === undefined || (unitNum(unit) === 999 ? 0 : unitNum(unit)) === focus}>
-          <summary><h2>{unit}</h2><span className="muted small">{list.filter((r) => r.entityType === 'assignment').length} graded · {list.filter((r) => r.entityType === 'course_material' && r.fields.kind !== 'note').length} readings and files</span></summary>
-          <ul className="module-items">
-            {[...list].sort((a, b) => order(a) - order(b) || byDue(a, b)).map((r) => (
-              <li key={r.id} className={`${r.entityType} ${statusOf(r) === 'submitted' ? 'is-done' : ''}`}>
-                {r.entityType === 'assignment' ? (
-                  <>
-                    <StatusButton record={r} compact />
-                    <button type="button" className="link plain title" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button>
-                    <span className="row-end">
-                      <span className="muted small mono">{dateOf(r) ? formatDate(dateOf(r)) : 'no date'}</span>
-                      <Urgency record={r} />
-                      {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className={`item-icon k-${String(r.fields.kind)}`} aria-hidden="true" />
-                    <span className="title">{String(r.fields.title)}</span>
-                    <span className="row-end"><span className="tag">{KIND_LABEL[String(r.fields.kind)] ?? String(r.fields.kind ?? '')}</span></span>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
-      {finishedUnits.length > 0 && (
-        <button type="button" className="link muted-link small" aria-pressed={showFinished} onClick={() => setShowFinished((v) => !v)}>
-          {showFinished ? 'Hide finished units' : `Show finished units (${finishedUnits.length})`}
-        </button>
+    <section className="card module focused" aria-label={`${name} contents`}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>{name}</h2>
+        <span className="row">
+          {confirming ? (
+            <>
+              <span className="small">Delete {name} and its {items.length} item{items.length === 1 ? '' : 's'}?</span>
+              <button type="button" className="danger" onClick={async () => { await service.deleteUnit(d.code, unit); const u = await undoLast(); refresh(); onClose(); toast(`${name} deleted`, u); }}>Yes, delete it</button>
+              <button type="button" className="secondary" onClick={() => setConfirming(false)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="link" onClick={() => setConfirming(true)}>Delete this module</button>
+              <button type="button" className="link" onClick={onClose}>Close</button>
+            </>
+          )}
+        </span>
+      </div>
+      {items.length === 0 ? <p className="muted">Nothing in this module.</p> : (
+        <ul className="module-items">
+          {[...items].sort((a, b) => order(a) - order(b) || byDue(a, b)).map((r) => (
+            <li key={r.id} className={`${r.entityType} ${statusOf(r) === 'submitted' ? 'is-done' : ''}`}>
+              {r.entityType === 'assignment' ? (
+                <>
+                  <StatusButton record={r} compact />
+                  <button type="button" className="link plain title" onClick={() => go({ name: 'assignment', id: r.id })}>{String(r.fields.title)}</button>
+                  <span className="row-end">
+                    <span className="muted small mono">{dateOf(r) ? formatDate(dateOf(r)) : 'no date'}</span>
+                    <Urgency record={r} />
+                    {typeof r.fields.pointsPossible === 'number' ? <span className="tag">{r.fields.pointsPossible} pts</span> : null}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className={`item-icon k-${String(r.fields.kind)}`} aria-hidden="true" />
+                  <span className="title">{String(r.fields.title)}</span>
+                  <span className="row-end"><span className="tag">{KIND_LABEL[String(r.fields.kind)] ?? String(r.fields.kind ?? '')}</span></span>
+                </>
+              )}
+              <button type="button" className="link muted-link small" aria-label={`Delete ${String(r.fields.title)}`} onClick={async () => { await service.deleteItem(r.id); const u = await undoLast(); refresh(); toast(`Deleted “${String(r.fields.title)}”`, u); }}>Delete</button>
+            </li>
+          ))}
+        </ul>
       )}
-    </>
+    </section>
   );
 }
 
@@ -523,13 +524,14 @@ function Assignments({ d }: { d: CourseData }) {
           </table>
         </>
       )}
+      <Policies d={d} embedded />
     </>
   );
 }
 
 /* ================= policies ================= */
 
-function Policies({ d }: { d: CourseData }) {
+function Policies({ d, embedded = false }: { d: CourseData; embedded?: boolean }) {
   const all = d.sources
     .filter((s) => ['syllabus', 'policy'].includes(sourceKind(s)))
     .flatMap((s) => policySections(s).map((sec) => ({ sec, source: s })));
@@ -538,7 +540,7 @@ function Policies({ d }: { d: CourseData }) {
   const shown = all.filter((p) => !topic || p.sec.topics.includes(topic));
   return (
     <>
-      <PageHead d={d} title="Policies and rules" sub="Collected from the syllabus and any rules or principles you add. Each assignment shows the ones that apply to it." />
+      {embedded ? <h2 style={{ marginTop: 32 }}>Rules and policies</h2> : <PageHead d={d} title="Policies and rules" sub="Collected from the syllabus and any rules or principles you add. Each assignment shows the ones that apply to it." />}
       {all.length === 0 ? <Empty d={d} kind="policy" text="No policies yet. Add the syllabus, or paste the course rules, principles or expectations." /> : (
         <>
           <div className="legend">
@@ -561,7 +563,9 @@ function Policies({ d }: { d: CourseData }) {
 /* ================= files and sources ================= */
 
 function Files({ d }: { d: CourseData }) {
-  const { service, refresh, toast } = useApp();
+  const { service, refresh, toast, version } = useApp();
+  const { data: linkData } = useAsync(() => service.materialLinks(), [version]);
+  const links = linkData ?? [];
   const materials = d.mine.filter((r) => r.entityType === 'course_material' && r.fields.kind !== 'note');
   const groups = new Map<string, ConfirmedRecord[]>();
   for (const m of materials) {
@@ -572,14 +576,16 @@ function Files({ d }: { d: CourseData }) {
   return (
     <>
       <PageHead d={d} title="Files and sources" sub="Everything you added to this course, labelled by what it is. Change a label if the app guessed wrong." />
+      {d.sources.length > 0 && <SourceSearch sources={d.sources} />}
       {d.sources.length === 0 ? <Empty d={d} text="Nothing added yet." /> : (
         <table className="timeline sources-table">
-          <thead><tr><th>What it is</th><th>Name</th><th>Added</th><th /></tr></thead>
+          <thead><tr><th>What it is</th><th>Name</th><th>Used for</th><th>Added</th><th /></tr></thead>
           <tbody>
             {d.sources.map((s) => (
               <tr key={s.id}>
                 <td><span className={`kind-badge k-${sourceKind(s)}`}>{MATERIAL_LABELS[sourceKind(s)]}</span></td>
                 <td>{s.originalName}<span className="muted small"> · {s.format}{s.pageOffsets ? ` · ${s.pageOffsets.length} pages` : ''}</span></td>
+                <td className="small">{(() => { const u = usedIn(s.id, links, d.mine.filter((r) => r.entityType === 'assignment')); return u.length ? u.map((x) => `${String(x.assignment.fields.title)}${x.note ? ` (${x.note})` : ''}`).join('; ') : <span className="muted">not attached</span>; })()}</td>
                 <td className="mono small">{s.importedAt.slice(0, 10)}</td>
                 <td>
                   <label className="inline-select">
@@ -756,16 +762,18 @@ const A_SECTIONS: { id: AssignmentSection; label: string }[] = [
   { id: 'brief', label: 'Brief' },
   { id: 'instructions', label: 'Instructions' },
   { id: 'rubric', label: 'Rubric' },
+  { id: 'materials', label: 'Course files' },
   { id: 'draft', label: 'Check my draft' },
   { id: 'context', label: 'Course context' },
   { id: 'title', label: 'Title page' },
 ];
 
 export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; section?: AssignmentSection }) {
-  const { service, version, go, refresh } = useApp();
+  const { service, version, go, refresh, markDone } = useApp();
   const { data } = useAsync(async () => ({
     all: await service.repository.listRecords(),
     sources: await service.repository.listSources(),
+    links: await service.materialLinks(),
   }), [version]);
   const record = data?.all.find((r) => r.id === id) ?? null;
   const code = String(record?.fields.courseCode ?? '');
@@ -775,12 +783,13 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
   if (!data || !d) return <p className="muted">Loading…</p>;
   if (!record) return <p className="muted">This item no longer exists.</p>;
 
-  const ctx = buildAssignmentContext(record, data.all, data.sources);
+  const ctx = buildAssignmentContext(record, data.all, data.sources, data.links);
   const a = analyseAssignment(record, ctx.rubric);
   const isPaper = ['paper', 'essay', 'report', 'reflection', 'project', 'assignment'].includes(String(record.fields.type));
   const counts: Partial<Record<AssignmentSection, number>> = {
     instructions: ctx.instructions.length + (typeof record.fields.instructions === 'string' ? 1 : 0),
     rubric: ctx.rubric.length,
+    materials: data.links.filter((l) => l.assignmentKey === record.key).length,
     context: ctx.policies.length + ctx.announcements.length + ctx.readings.length,
   };
   const doneIds = Array.isArray(record.fields.checklistDone) ? (record.fields.checklistDone as string[]) : [];
@@ -795,7 +804,11 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
           {dateOf(record) ? `Due ${formatDate(dateOf(record))}` : typeof record.fields.dueNote === 'string' ? record.fields.dueNote : 'No due date yet'}
           {typeof record.fields.pointsPossible === 'number' ? ` · ${record.fields.pointsPossible} points` : ''}
         </p>
-        <div className="row"><StatusButton record={record} /> <Urgency record={record} /></div>
+        <div className="row">
+          <StatusButton record={record} /> <Urgency record={record} />
+          {statusOf(record) !== 'submitted' && <button type="button" onClick={() => markDone(record)}>Mark as done</button>}
+          <DueDateEditor record={record} />
+        </div>
       </div>
 
       <div className="tabs" role="tablist" aria-label="Assignment sections">
@@ -864,6 +877,7 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
         </>
       )}
 
+      {section === 'overview' && <Stickies assignmentId={record.id} courseCode={code} title="Notes for this assignment" />}
       {section === 'brief' && <BriefView id={record.id} />}
 
       {section === 'instructions' && (
@@ -907,9 +921,47 @@ export function AssignmentWorkspace({ id, section = 'overview' }: { id: string; 
         </div>
       )}
 
+      {section === 'materials' && <MaterialsView assignment={record} />}
       {section === 'draft' && <DraftCheckView id={record.id} />}
       {section === 'title' && isPaper && <TitlePage record={record} />}
     </CourseShell>
+  );
+}
+
+/** Override a due date by hand. It shows what will change, asks to confirm, and can be undone. */
+function DueDateEditor({ record }: { record: ConfirmedRecord }) {
+  const { service, refresh, toast } = useApp();
+  const old = dateOf(record);
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(old?.iso ?? '');
+  const [time, setTime] = useState(old?.time ?? '');
+  const [ask, setAsk] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!open) return <button type="button" className="secondary" onClick={() => setOpen(true)}>Change due date</button>;
+  const label = (iso: string, t: string) => `${prettyDate(iso)}${t ? ` at ${prettyTime(t)}` : ''}`;
+  const apply = async () => {
+    try {
+      await service.overrideDueDate(record.id, date, time || null);
+      const u = (await service.undoList()).pop();
+      setOpen(false); setAsk(false); refresh();
+      toast(`Due date is now ${label(date, time)}`, u ? async () => { await service.undo(u.id); refresh(); } : undefined);
+    } catch (e) { setError(errorMessage(e)); }
+  };
+  return (
+    <span className="row" role="group" aria-label="Change due date">
+      <input type="date" aria-label="New due date" value={date} onChange={(e) => { setDate(e.target.value); setAsk(false); }} />
+      <input type="time" aria-label="New due time" value={time} onChange={(e) => { setTime(e.target.value); setAsk(false); }} />
+      {!ask ? (
+        <button type="button" disabled={!date} onClick={() => setAsk(true)}>Review change</button>
+      ) : (
+        <>
+          <span className="small">Change {old?.iso ? `from ${label(old.iso, old.time ?? '')} ` : ''}to {label(date, time)}?</span>
+          <button type="button" onClick={apply}>Yes, change it</button>
+        </>
+      )}
+      <button type="button" className="link" onClick={() => { setOpen(false); setAsk(false); }}>Cancel</button>
+      {error && <span role="alert" className="error small">{error}</span>}
+    </span>
   );
 }
 

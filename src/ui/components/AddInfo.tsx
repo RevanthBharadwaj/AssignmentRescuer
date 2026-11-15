@@ -5,6 +5,7 @@ import type { ImportInput, ImportResult } from '../../core/pipeline';
 import type { ContentLabel, EntityType, FieldValue, ImportHints } from '../../core/types';
 import { CONTENT_LABELS } from '../../core/types';
 import { dateFromInputs, errorMessage } from '../format';
+import { useAsync } from '../useAsync';
 
 interface PendingFile {
   name: string;
@@ -35,7 +36,8 @@ export function readFileBytes(f: Blob): Promise<Uint8Array> {
 const TIME_ZONES = ['', 'ET', 'CT', 'MT', 'PT', 'AKST', 'HST', 'UTC'];
 
 export function AddInfo({ onImported }: { onImported: () => void }) {
-  const { service, refresh } = useApp();
+  const { service, refresh, version } = useApp();
+  const { data: courseList } = useAsync(() => service.repository.listRecords('course'), [version]);
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [hints, setHints] = useState<ImportHints>({});
@@ -69,7 +71,8 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await service.import(inputs);
+      // With a course chosen, nothing it already has is added twice, and BUS 719A lands in BUS 719.
+      const r = hints.course ? await service.importForCourse(hints.course, inputs) : await service.import(inputs);
       setResult(r);
       refresh();
       if (r.sources.length > 0) {
@@ -104,7 +107,13 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
         <p>Paste text, drop files, or type details yourself. Nothing is saved until you review it.</p>
       </div>
 
-      <div className="card" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+      <div className="card dropzone" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+        <label className="for-assignment">Which course is this for?
+          <select aria-label="Which course is this for" value={hints.course ?? ''} onChange={(e) => setHints({ ...hints, course: e.target.value || undefined })}>
+            <option value="">Work it out from the text</option>
+            {(courseList ?? []).map((c) => <option key={c.id} value={String(c.fields.code)}>{String(c.fields.code)}{c.fields.name ? ` · ${String(c.fields.name)}` : ''}</option>)}
+          </select>
+        </label>
         <label htmlFor="paste" className="label">Paste text (assignment instructions, course timeline, syllabus, announcement, rubric)</label>
         <textarea id="paste" rows={10} value={text} onChange={(e) => setText(e.target.value)} onPaste={onPaste} placeholder="Paste from Canvas, Blackboard, email or a document…" />
         <div className="row">
@@ -128,7 +137,6 @@ export function AddInfo({ onImported }: { onImported: () => void }) {
           <div className="grid">
             <label>University<input value={hints.university ?? ''} onChange={(e) => setHints({ ...hints, university: e.target.value })} /></label>
             <label>Semester<input value={hints.semester ?? ''} placeholder="Fall 2026" onChange={(e) => setHints({ ...hints, semester: e.target.value })} /></label>
-            <label>Course<input value={hints.course ?? ''} placeholder="CIS 6930" onChange={(e) => setHints({ ...hints, course: e.target.value })} /></label>
             <label>Academic year<input value={hints.academicYear ?? ''} placeholder="2026-2027" onChange={(e) => setHints({ ...hints, academicYear: e.target.value })} /></label>
             <label>Content type
               <select value={hints.contentType ?? ''} onChange={(e) => setHints({ ...hints, contentType: (e.target.value || undefined) as ContentLabel | undefined })}>

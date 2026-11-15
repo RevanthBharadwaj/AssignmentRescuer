@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Hint } from './Guide';
+import { DEFAULT_SCHOOL_ZONE, ZONES } from '../../core/timezone';
+import { DEFAULT_CELEBRATION, type CelebrationSettings } from './Celebration';
 import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import type { AcademicDate, ConfirmedRecord } from '../../core/types';
@@ -120,6 +122,7 @@ export function Setup() {
               <>
                 <Saved rows={[['Your name', data.student.name], ['University', data.uni?.fields.name as string], ['Degree or program', data.uni?.fields.program as string]]} />
                 <button type="button" className="modify" onClick={() => { fillFromSaved(); setEditSchool(true); }}>Modify</button>
+                <SchoolZone />
               </>
             ) : (
               <>
@@ -128,6 +131,7 @@ export function Setup() {
                   <label>University<input value={uni} onChange={(e) => setUni(e.target.value)} placeholder="Example State University" /></label>
                   <label>Degree or program<input value={program} onChange={(e) => setProgram(e.target.value)} placeholder="MBA" /></label>
                 </div>
+                <SchoolZone />
                 <div className="row">
                   <button type="button" disabled={!uni.trim()} onClick={() => run('School saved', async () => {
                     await service.saveStudent({ name });
@@ -284,6 +288,7 @@ export function Setup() {
           <div>
             <h2>Reminders <span className="muted small">optional</span></h2>
             <RemindersCard />
+            <CelebrationCard />
           </div>
         </li>
       </ol>
@@ -296,6 +301,39 @@ export function Setup() {
         <button type="button" className="link" onClick={() => go({ name: 'add' })}>or fill this in from a syllabus</button>
       </div>
     </section>
+  );
+}
+
+/** What happens when you mark an assignment done. The message is whatever you type; leave it empty for a friendly default. */
+function CelebrationCard() {
+  const { service } = useApp();
+  const { data } = useAsync(() => service.repository.getSetting<Partial<CelebrationSettings>>('celebration', {}), []);
+  const [sound, setSound] = useState<boolean | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  if (!data) return null;
+  const cur = { ...DEFAULT_CELEBRATION, ...data };
+  const save = (next: Partial<CelebrationSettings>) => service.repository.setSetting('celebration', { ...cur, ...next });
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h3>Celebration</h3>
+      <label className="check"><input type="checkbox" checked={sound ?? cur.sound} onChange={(e) => { setSound(e.target.checked); void save({ sound: e.target.checked }); }} /> Play a short fanfare when I mark something done</label>
+      <label style={{ display: 'block' }}>Your own message (optional)
+        <input aria-label="Celebration message" value={message ?? cur.message} placeholder="Done and dusted." onChange={(e) => setMessage(e.target.value)} onBlur={() => void save({ message: (message ?? cur.message).slice(0, 120) })} />
+      </label>
+    </div>
+  );
+}
+
+/** The school's time zone: deadlines, the timer and "today" follow it, wherever you are. */
+function SchoolZone() {
+  const { service, zone, refresh, toast } = useApp();
+  return (
+    <label style={{ display: 'block', marginTop: 12 }}>School time zone
+      <select aria-label="School time zone" value={ZONES.some((z) => z.id === zone) ? zone : DEFAULT_SCHOOL_ZONE} onChange={async (e) => { await service.repository.setSetting('school.zone', e.target.value); refresh(); toast('Deadlines now follow school time'); }}>
+        {ZONES.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
+      </select>
+      <span className="muted small"> Deadlines, the timer and reminders use this zone even when you travel.</span>
+    </label>
   );
 }
 

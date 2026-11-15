@@ -29,7 +29,7 @@ interface DayMark {
   kind: 'break' | 'semester';
 }
 
-export function Calendar() {
+export function Calendar({ embedded = false }: { embedded?: boolean } = {}) {
   const { service, version, today, go } = useApp();
   const [view, setView] = useState<'month' | 'week'>('month');
   const [anchor, setAnchor] = useState(today);
@@ -107,8 +107,8 @@ export function Calendar() {
       <div className="page-head cal-head">
         <div>
           <span className="chip">calendar</span>
-          <h1 id="cal-title">{title}</h1>
-          <Hint id="calendar" />
+          {embedded ? <h2 id="cal-title">{title}</h2> : <h1 id="cal-title">{title}</h1>}
+          {!embedded && <Hint id="calendar" />}
         </div>
         <div className="cal-controls">
           <div className="segmented" role="group" aria-label="Calendar view">

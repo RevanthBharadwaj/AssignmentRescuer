@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { AcademicService } from '../core/service';
 import { notifyDesktop, sendEmail } from './notifier';
 import { backgroundActive, stopBackground, syncBackground } from './background';
+import { DEFAULT_SCHOOL_ZONE, zoneNow } from '../core/timezone';
 
 /**
  * Sends due reminders while the app is open. Checks every minute; each
@@ -9,7 +10,7 @@ import { backgroundActive, stopBackground, syncBackground } from './background';
  * the whole day. After a failure it waits fifteen minutes before trying again
  * and says so once; a channel that already worked is not repeated.
  */
-export function useReminderLoop(service: AcademicService, enabled: boolean, today: string, toast: (t: string) => void) {
+export function useReminderLoop(service: AcademicService, enabled: boolean, today: string, toast: (t: string) => void, zone: string = DEFAULT_SCHOOL_ZONE) {
   const lastError = useRef<string | null>(null);
   const retryAt = useRef(0);
   const done = useRef(new Set<string>());
@@ -20,7 +21,7 @@ export function useReminderLoop(service: AcademicService, enabled: boolean, toda
       if (busy || Date.now() < retryAt.current) return;
       busy = true;
       try {
-        const { reminders, messages, email, settings } = await service.dueNow(new Date(), today);
+        const { reminders, messages, email, settings } = await service.dueNow(zoneNow(zone).wall, today);
         if (!reminders.length) return;
         const batch = reminders.map((r) => r.id).join('|');
         const errors: string[] = [];
@@ -63,7 +64,7 @@ export function useReminderLoop(service: AcademicService, enabled: boolean, toda
     void tick();
     const id = setInterval(() => void tick(), 60_000);
     return () => clearInterval(id);
-  }, [service, enabled, today, toast]);
+  }, [service, enabled, today, toast, zone]);
 }
 
 /**

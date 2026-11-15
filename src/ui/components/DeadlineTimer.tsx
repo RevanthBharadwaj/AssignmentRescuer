@@ -3,23 +3,25 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../useAsync';
 import { DEFAULT_COUNTDOWN, clean, dayName, formatClock, formatRemaining, nextDeadline, type CountdownSettings } from '../../core/countdown';
 import { dueDateOf } from '../../core/finished';
+import { zoneLabel, zoneNow } from '../../core/timezone';
 
 const KEY = 'countdown';
 
 /** Sits in the top bar: time left until the next weekly deadline (Wednesday and Saturday at 11:59 PM unless changed). */
 export function DeadlineTimer() {
-  const { service, version } = useApp();
+  const { service, version, zone } = useApp();
   const { data } = useAsync(async () => ({
     settings: clean(await service.repository.getSetting<CountdownSettings>(KEY, DEFAULT_COUNTDOWN)),
     records: await service.repository.listRecords(),
   }), [version]);
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => zoneNow(zone).wall);
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<CountdownSettings | null>(null);
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    setNow(zoneNow(zone).wall);
+    const t = setInterval(() => setNow(zoneNow(zone).wall), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [zone]);
   const settings = local ?? data?.settings ?? DEFAULT_COUNTDOWN;
   const save = async (next: CountdownSettings) => {
     const c = clean(next);
@@ -38,7 +40,7 @@ export function DeadlineTimer() {
       <button type="button" className={`timer-btn ${urgent ? 'urgent' : ''}`} aria-expanded={open} aria-label="Deadline timer" onClick={() => setOpen((o) => !o)}>
         {target ? (
           <>
-            <span className="timer-label">{dayName(target.getDay())} {formatClock(settings.time)}</span>
+            <span className="timer-label">{dayName(target.getDay())} {formatClock(settings.time)} {zoneLabel(zone)}</span>
             <span className="timer-left" role="timer">{formatRemaining(left)}</span>
             {dueThen > 0 && <span className="timer-count">{dueThen} due</span>}
           </>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppContext, localToday, type AppContextValue, type Route } from './AppContext';
+import { AppContext, type AppContextValue, type Route } from './AppContext';
+import { DEFAULT_SCHOOL_ZONE, deviceDiffers, validZone, zoneLabel, zoneNow } from '../core/timezone';
 import type { AcademicService } from '../core/service';
 import { Home } from './components/Home';
 import { AddInfo } from './components/AddInfo';
@@ -13,13 +14,16 @@ import { Chat } from './components/Chat';
 import { DeadlineTimer } from './components/DeadlineTimer';
 import { useBackgroundReminders, useReminderLoop } from './useReminderLoop';
 import { Tour } from './components/Guide';
+import { DropCatcher } from './components/DropCatcher';
+import { Notifications } from './components/Notifications';
+import { Celebration, DEFAULT_CELEBRATION, type CelebrationSettings } from './components/Celebration';
+import type { ConfirmedRecord } from '../core/types';
 import { Toasts, type Toast } from './ux';
 import { Breadcrumbs, type Crumb } from './components/Breadcrumbs';
 
 /** The four main areas live in the bottom dock. */
 const DOCK: { route: Route['name']; label: string; verb: string }[] = [
   { route: 'home', label: 'Home', verb: 'this week' },
-  { route: 'calendar', label: 'Calendar', verb: 'see it' },
   { route: 'courses', label: 'Courses', verb: 'plan it' },
   { route: 'review', label: 'Review', verb: 'confirm it' },
   { route: 'sources', label: 'Imported material', verb: 'trace it' },
@@ -42,18 +46,19 @@ const TOP_CRUMBS: Partial<Record<Route['name'], Crumb[]>> = {
   features: [{ label: 'Features' }],
 };
 
-function useClock(): string {
+function useClock(zone: string): string {
   const fmt = () => {
     const d = new Date();
-    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    const tz = new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value ?? '';
-    return `${time} ${tz}`;
+    const t = zoneNow(zone, d);
+    return `${t.time} ${zoneLabel(zone, d)}${deviceDiffers(zone, d) ? ' (school time)' : ''}`;
   };
   const [now, setNow] = useState(fmt);
   useEffect(() => {
+    setNow(fmt());
     const t = setInterval(() => setNow(fmt()), 30_000);
     return () => clearInterval(t);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zone]);
   return now;
 }
 
@@ -73,15 +78,37 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
     setToasts((t) => [...t.slice(-2), { id, text, undo: undo ? async () => { await undo(); refresh(); } : undefined }]);
     setTimeout(() => dismiss(id), 6000);
   }, [dismiss, refresh]);
-  const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? localToday(), mode, go, toast }), [service, version, refresh, today, mode, go, toast]);
-  useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast);
+  const { data: savedZone } = useAsync(() => service.repository.getSetting<string>('school.zone', DEFAULT_SCHOOL_ZONE), [version]);
+  const zone = validZone(savedZone) ? savedZone : DEFAULT_SCHOOL_ZONE;
+  // "Today" is the school's today. A minute tick keeps it right across midnight.
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 60_000); return () => clearInterval(t); }, []);
+  const schoolToday = useMemo(() => zoneNow(zone).date, [zone, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [confirmDone, setConfirmDone] = useState<ConfirmedRecord | null>(null);
+  const [party, setParty] = useState<{ title: string; name: string; settings: CelebrationSettings } | null>(null);
+  const markDone = useCallback((record: ConfirmedRecord) => setConfirmDone(record), []);
+  const finishDone = useCallback(async () => {
+    const rec = confirmDone;
+    if (!rec) return;
+    setConfirmDone(null);
+    await service.markDone(rec.id);
+    const list = await service.undoList();
+    const entry = list[list.length - 1];
+    refresh();
+    const settings = { ...DEFAULT_CELEBRATION, ...(await service.repository.getSetting<Partial<CelebrationSettings>>('celebration', {})) };
+    const name = (await service.student()).name.split(/\s+/)[0] ?? '';
+    setParty({ title: String(rec.fields.title), name, settings });
+    toast(`Marked “${String(rec.fields.title)}” as done`, entry ? async () => { await service.undo(entry.id); } : undefined);
+  }, [confirmDone, service, refresh, toast]);
+  const ctx = useMemo<AppContextValue>(() => ({ service, version, refresh, today: today ?? schoolToday, zone, mode, go, toast, markDone }), [service, version, refresh, today, schoolToday, zone, mode, go, toast, markDone]);
+  useReminderLoop(service, mode !== 'browser-preview', ctx.today, toast, zone);
   useBackgroundReminders(service, version, ctx.today, toast);
   useEffect(() => {
     if (mode === 'test') return;
     void service.ensureCourses().then((n) => { if (n > 0) refresh(); });
   }, [service, version, mode, refresh]);
   const { data: pending } = useAsync(() => service.repository.listProposals('pending').then((p) => p.length), [version]);
-  const clock = useClock();
+  const clock = useClock(zone);
   const [tour, setTour] = useState(false);
   useEffect(() => {
     if (mode === 'test') return;
@@ -103,7 +130,8 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           </nav>
           {mode === 'browser-preview' && <span className="preview-note">browser preview</span>}
           <DeadlineTimer />
-          <span className="clock" aria-label="Local time">{clock}</span>
+          <Notifications />
+          <span className="clock" aria-label="School time">{clock}</span>
         </header>
 
         <main key={`${route.name}-${'code' in route ? route.code : ''}-${'id' in route ? route.id : ''}-${'tab' in route ? route.tab : ''}-${'section' in route ? route.section : ''}`} className="route">
@@ -121,6 +149,20 @@ export function App({ service, mode, today }: { service: AcademicService; mode: 
           {route.name === 'chat' && <Chat code={route.code} assignmentId={route.assignmentId} />}
         </main>
         <Toasts items={toasts} dismiss={dismiss} />
+        {confirmDone && (
+          <div className="drop-veil" style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,.5)' }}>
+            <div role="alertdialog" aria-label="Mark as done" style={{ textAlign: 'center', border: 0 }}>
+              <h2>Is “{String(confirmDone.fields.title)}” really done?</h2>
+              <p className="muted">It moves out of your lists, and you can undo it.</p>
+              <div className="row" style={{ justifyContent: 'center' }}>
+                <button type="button" onClick={finishDone}>Yes, it is done</button>
+                <button type="button" className="secondary" onClick={() => setConfirmDone(null)}>Not yet</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {party && <Celebration title={party.title} name={party.name} settings={party.settings} onClose={() => setParty(null)} />}
+        <DropCatcher routeCourse={route.name === 'course' ? route.code : null} />
         {tour && <Tour onClose={closeTour} />}
 
         <nav className="dock" aria-label="Workflow">

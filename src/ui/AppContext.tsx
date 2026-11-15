@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { AcademicService } from '../core/service';
+import type { ConfirmedRecord } from '../core/types';
 
 export type Route =
   | { name: 'home' }
@@ -14,7 +15,7 @@ export type Route =
   | { name: 'add' }
   | { name: 'calendar'; month?: string };
 
-export type AssignmentSection = 'overview' | 'brief' | 'instructions' | 'rubric' | 'draft' | 'context' | 'title';
+export type AssignmentSection = 'overview' | 'brief' | 'instructions' | 'rubric' | 'materials' | 'draft' | 'context' | 'title';
 
 export type CourseTab = 'home' | 'announcements' | 'syllabus' | 'modules' | 'assignments' | 'policies' | 'files' | 'add';
 
@@ -22,11 +23,15 @@ export interface AppContextValue {
   go: (route: Route) => void;
   /** Show a short confirmation, optionally with Undo. */
   toast: (text: string, undo?: () => void | Promise<void>) => void;
+  /** Ask "Is it really done?" and, if yes, mark the assignment done with a small celebration. */
+  markDone: (record: ConfirmedRecord) => void;
   service: AcademicService;
   /** Bumped after every write so screens reload their data. */
   version: number;
   refresh: () => void;
   today: string;
+  /** The school's time zone. Deadlines and "today" are in this zone wherever the student is. */
+  zone: string;
   mode: 'desktop' | 'browser-preview' | 'test';
 }
 

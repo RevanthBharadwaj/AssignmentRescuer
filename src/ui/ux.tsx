@@ -49,7 +49,7 @@ const NEXT: Record<Status, Status> = { todo: 'in_progress', in_progress: 'submit
 const LABEL: Record<Status, string> = { todo: 'To do', in_progress: 'In progress', submitted: 'Submitted' };
 
 export function StatusButton({ record, compact = false }: { record: ConfirmedRecord; compact?: boolean }) {
-  const { service, refresh, toast } = useApp();
+  const { service, refresh, toast, markDone } = useApp();
   const status = statusOf(record);
   const set = async (to: Status) => {
     await service.repository.correctRecord(record.id, { status: to });
@@ -64,8 +64,10 @@ export function StatusButton({ record, compact = false }: { record: ConfirmedRec
       onClick={async (e) => {
         e.stopPropagation();
         const to = NEXT[status];
+        // Finishing asks first, then celebrates. Going back or to "in progress" is immediate.
+        if (to === 'submitted') { markDone(record); return; }
         await set(to);
-        toast(to === 'submitted' ? `Marked “${String(record.fields.title)}” as submitted` : `“${String(record.fields.title)}”: ${LABEL[to].toLowerCase()}`, () => set(status));
+        toast(`“${String(record.fields.title)}”: ${LABEL[to].toLowerCase()}`, () => set(status));
       }}
     >
       <span className="status-icon" aria-hidden="true">{status === 'submitted' ? '✓' : status === 'in_progress' ? '◐' : ''}</span>

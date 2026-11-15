@@ -204,10 +204,11 @@ describe('desktop UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Approve \d+ selected$/ }));
     expect(await screen.findByText('Nothing waiting for DSC 6400.')).toBeInTheDocument();
 
-    fireEvent.click(await menu('Modules'));
-    expect(await screen.findByRole('heading', { name: 'Week 1' })).toBeInTheDocument();
+    fireEvent.click(await menu('Home'));
+    fireEvent.click((await screen.findAllByRole('button', { name: /^Open Unit 1$/ }))[0]);
+    expect(await screen.findByRole('heading', { name: 'Unit 1' })).toBeInTheDocument();
     expect(screen.getByText('Foundations of Data Ethics.pdf')).toBeInTheDocument();
-    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Modules')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Modules/ })).not.toBeInTheDocument();
 
     fireEvent.click(await menu('Assignments'));
     expect(await screen.findByText(/645 points listed in your material/)).toBeInTheDocument();
@@ -219,7 +220,7 @@ describe('desktop UI', () => {
 
     fireEvent.click(dock('Home'));
     expect(await screen.findByRole('heading', { name: 'Due in the next 7 days' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Week 1: Discussion Question 1' })).toBeInTheDocument();
+    expect((await screen.findAllByRole('button', { name: 'Week 1: Discussion Question 1' })).length).toBeGreaterThan(0);
   });
 
   it('keeps syllabus, announcements and policies apart and links them to assignments', async () => {
@@ -236,12 +237,11 @@ describe('desktop UI', () => {
     expect(await screen.findByRole('article', { name: 'Announcement: Week 2 writing assignment update' })).toBeInTheDocument();
     fireEvent.click(await menu('Syllabus'));
     expect(await screen.findByText('Late Work Policy')).toBeInTheDocument();
-    fireEvent.click(await menu('Policies and rules'));
+    fireEvent.click(await menu('Assignments'));
     expect(await screen.findByRole('article', { name: 'Policy: Use of Artificial Intelligence' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'AI use' }));
     expect(screen.queryByRole('article', { name: 'Policy: Grading Scale' })).not.toBeInTheDocument();
 
-    fireEvent.click(await menu('Assignments'));
     fireEvent.click(await screen.findByRole('button', { name: 'Week 2: Writing Assignment' }));
     await screen.findByRole('heading', { name: 'Week 2: Writing Assignment' });
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
@@ -335,7 +335,8 @@ describe('desktop UI', () => {
     await typedSemester(service);
     await service.importForCourse('DSC 6400', [{ kind: 'text', text: fixture('canvas-modules.txt') }]);
     await approveAll(service);
-    fireEvent.click(dock('Calendar'));
+    fireEvent.click(dock('Courses'));
+    fireEvent.click(dock('Home'));
     expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
     const sep6 = screen.getByRole('gridcell', { name: '2026-09-06: 2 items' });
     const pill = within(sep6).getByRole('button', { name: 'Week 1: Discussion Question 1' });
@@ -356,7 +357,7 @@ describe('desktop UI', () => {
     // Hiding a course removes its items.
     fireEvent.click(screen.getByRole('button', { name: /DSC 6400/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Month' }));
-    expect(screen.queryByRole('button', { name: 'Week 1: Discussion Question 1' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Calendar' })).queryByRole('button', { name: 'Week 1: Discussion Question 1' })).not.toBeInTheDocument();
   });
 
   it('marks work in progress and submitted, with undo and course progress', async () => {
@@ -370,7 +371,11 @@ describe('desktop UI', () => {
     const status = await screen.findByRole('button', { name: 'Week 15: Final Research Paper: To do. Change status' });
     fireEvent.click(status);
     fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper: In progress. Change status' }));
-    expect(await screen.findByText('Marked “Week 15: Final Research Paper” as submitted')).toBeInTheDocument();
+    // Finishing asks first.
+    fireEvent.click(await screen.findByRole('button', { name: 'Not yet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Week 15: Final Research Paper: In progress. Change status' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, it is done' }));
+    expect(await screen.findByText('Marked “Week 15: Final Research Paper” as done')).toBeInTheDocument();
     expect(await screen.findByText(/46% of points submitted/)).toBeInTheDocument();
     const undos = screen.getAllByRole('button', { name: 'Undo' });
     fireEvent.click(undos[undos.length - 1]);

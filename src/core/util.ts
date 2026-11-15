@@ -33,6 +33,17 @@ export function normaliseCourseCode(code: string): string {
   return m ? `${m[1].toUpperCase()} ${m[2].toUpperCase()}` : code.trim().toUpperCase();
 }
 
+/**
+ * Whether two course codes are the same course: BUS 719 and BUS 719A are (the letter is a section or
+ * a variant of the same number). BUS 719A and BUS 719B are not, because both letters are given and differ.
+ */
+export function sameCourse(a: string, b: string): boolean {
+  const parse = (c: string) => /^([A-Z]{2,4}) (\d{3,4})([A-Z]?)$/.exec(normaliseCourseCode(c));
+  const x = parse(a), y = parse(b);
+  if (!x || !y) return normaliseCourseCode(a) === normaliseCourseCode(b);
+  return x[1] === y[1] && x[2] === y[2] && (x[3] === y[3] || !x[3] || !y[3]);
+}
+
 const WORD_NUMBERS: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };

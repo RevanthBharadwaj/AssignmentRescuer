@@ -259,15 +259,26 @@ export class Repository {
     return rec;
   }
 
-  /** Put a deleted record back exactly as it was (same id, same evidence). Does nothing if it already exists. */
+  /** Put a record back exactly as it was (same id, same evidence). If it still exists, its fields and key are reset. */
   async restoreRecord(r: ConfirmedRecord): Promise<void> {
-    if (await this.getRecord(r.id)) return;
+    const here = await this.getRecord(r.id);
+    if (here) {
+      // Already there: put its fields and key back as they were.
+      await this.db.execute('UPDATE records SET fields_json = ?, unknown_fields_json = ?, record_key = ?, updated_at = ? WHERE id = ?',
+        [JSON.stringify(r.fields), JSON.stringify(r.unknownFields), r.key, r.updatedAt, r.id]);
+      return;
+    }
     await this.db.transaction(async () => {
       await this.upsertRecord(r, true);
       for (const ev of r.evidence) {
         await this.db.execute('INSERT INTO evidence (record_id, source_id, provenance_json) VALUES (?,?,?)', [r.id, ev.sourceId, JSON.stringify(ev)]);
       }
     });
+  }
+
+  /** Change a record's key (used when courses are merged so later imports still match it). */
+  async rekeyRecord(id: string, key: string): Promise<void> {
+    await this.db.execute('UPDATE records SET record_key = ? WHERE id = ?', [key, id]);
   }
 
   async deleteRecord(id: string): Promise<void> {

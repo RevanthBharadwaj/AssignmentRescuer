@@ -2,6 +2,7 @@ import type { Classification, ConfirmedRecord, SourceDocument } from './types';
 import { looksLikeModuleList } from './extract/canvas';
 import { findDates } from './extract/dates';
 import { normaliseCourseCode, normaliseKey } from './util';
+import { attachmentsFor, type MaterialLink } from './materials';
 
 /**
  * Course content model: what kind of material each imported source is,
@@ -199,7 +200,7 @@ export interface AssignmentContext {
   readings: ContextItem[];
 }
 
-export function buildAssignmentContext(assignment: ConfirmedRecord, records: ConfirmedRecord[], sources: CourseSource[]): AssignmentContext {
+export function buildAssignmentContext(assignment: ConfirmedRecord, records: ConfirmedRecord[], sources: CourseSource[], links: MaterialLink[] = []): AssignmentContext {
   const code = String(assignment.fields.courseCode ?? '');
   const mine = sourcesForCourse(code, sources, records);
   const evidenceIds = new Set(assignment.evidence.map((e) => e.sourceId));
@@ -250,6 +251,10 @@ export function buildAssignmentContext(assignment: ConfirmedRecord, records: Con
       recordId: r.id,
     }));
 
+  // Files attached to this assignment by hand come first, each with its own note ("Chapters 1 and 2").
+  const attached: ContextItem[] = attachmentsFor(assignment, links, sources).map((a) => ({
+    kind: 'reading' as const, title: `${a.source.originalName}${a.note ? `: ${a.note}` : ''}`, body: a.note, sourceName: a.source.originalName, sourceId: a.source.id, location: a.note || null,
+  }));
   const rubric = records.filter((r) => r.entityType === 'rubric_criterion' && r.fields.assignmentKey === assignment.key);
-  return { instructions, rubric, policies, announcements, readings };
+  return { instructions, rubric, policies, announcements, readings: [...attached, ...readings] };
 }

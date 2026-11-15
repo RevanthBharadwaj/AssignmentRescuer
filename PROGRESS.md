@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: November 14, 2026 (announcements and the AI assistant)
+Last updated: November 15, 2026 (Update 23, notes round)
 
 ## Summary
 
@@ -30,7 +30,11 @@ Spec input formats   plain text ✅  TXT ✅  Markdown ✅  manual ✅  PDF ⏳ 
 
 ## Done so far
 
-**Update 22: review suggestions, undo, repeating work, draft check (latest)**
+**Update 23: the handwritten notes round (latest)**
+
+One course instead of two (BUS 719 and BUS 719A), with a merge suggestion and undo. School time zone (Central by default) for the clock, timer and reminders. Home gets a greeting, semester progress, Next up, course filters, the calendar and sticky notes; the Calendar tab is gone. Modules and Policies tabs are folded into Course Home and Assignments, with delete module and undo. Mark as done asks first, then celebrates. Due dates can be changed after confirming. A bell lists overdue, today and tomorrow. Search inside imported files with page numbers. Files attach to assignments with a note (chapters or pages), and the assistant reads attached files first. 249 tests pass, tsc and eslint clean. Not tried in a real window.
+
+**Update 22: review suggestions, undo, repeating work, draft check**
 
 1. Review page now starts with Suggestions found on plain rules, no AI and no cost: the same assignment saved twice, due dates outside the semester, work whose title names another course, courses missing a name or professor, assignments with no date, courses with nothing in them, and items where every requirement is ticked but it is not marked submitted. Each has one button; nothing changes until you press it.
 2. "Ask AI to compare my course material" reads each course's syllabus and announcements next to what is saved and suggests date changes and missing items. Every finding must quote the real material or it is dropped. It only adds suggestions; you approve each one.
